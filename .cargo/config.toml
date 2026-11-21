@@ -1,0 +1,7 @@
+# Android 15/16 16 KB ELF page alignment flags (matches rust-anything Android profile)
+
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
+
+[target.x86_64-linux-android]
+rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]

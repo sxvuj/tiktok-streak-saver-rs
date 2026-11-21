@@ -1,0 +1,17 @@
+[package]
+name = "streak-saver-cli"
+description = "Standalone pure Rust CLI and rust-anything parity verifier for TikTok Streak Saver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+chrono.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+streak-saver-core = { path = "../streak-saver-core" }
+
+[lints]
+workspace = true

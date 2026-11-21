@@ -1,0 +1,20 @@
+[package]
+name = "streak-saver-jni"
+description = "Android JNI cdylib bridge for streak-saver-core (rust-anything Android profile)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+chrono.workspace = true
+jni.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+streak-saver-core = { path = "../streak-saver-core" }
+
+[lints]
+workspace = true

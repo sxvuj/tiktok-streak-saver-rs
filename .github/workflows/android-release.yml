@@ -6,6 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  CARGO_TERM_COLOR: always
+  # 16 KB ELF page alignment for Android 15/16. Set here as well as in .cargo/config.toml
+  # because cargo-ndk can override per-target rustflags from config files.
+  ALIGN_FLAGS: "-C link-arg=-Wl,-z,max-page-size=16384"
+
 jobs:
   rust-gate:
     runs-on: ubuntu-latest
@@ -14,6 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy gate
@@ -31,13 +38,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+      # AGP 8.7.x needs Gradle 8.9 to 8.x. Pin it instead of relying on the runner image.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Resolve Android NDK
+        run: |
+          NDK="${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
+          test -d "$NDK" || { echo "No NDK found on runner"; exit 1; }
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "Using NDK at $NDK"
       - name: Build 16KB-aligned JNI libraries
+        env:
+          RUSTFLAGS: ${{ env.ALIGN_FLAGS }}
         run: |
           cargo ndk \
             -t arm64-v8a \
@@ -45,10 +65,25 @@ jobs:
             -t x86_64 \
             -o android/app/src/main/jniLibs \
             build --release -p streak-saver-jni
+      - name: Verify 16KB alignment of native libs
+        run: |
+          READELF="$(find "$ANDROID_NDK_HOME" -name llvm-readelf -type f | head -n1)"
+          fail=0
+          for so in android/app/src/main/jniLibs/*/libstreak_saver_jni.so; do
+            abi="$(basename "$(dirname "$so")")"
+            # 32-bit armeabi-v7a is exempt from the 16 KB requirement; report only.
+            aligns="$("$READELF" -lW "$so" | awk '$1=="LOAD"{print $NF}' | sort -u | tr '\n' ' ')"
+            echo "$abi LOAD align: $aligns"
+            if [ "$abi" != "armeabi-v7a" ] && echo "$aligns" | grep -qE '0x1000( |$)'; then
+              echo "::error::$abi is only 4 KB aligned"; fail=1
+            fi
+          done
+          exit $fail
       - name: Assemble Android Debug APK
         working-directory: android
-        run: gradle assembleDebug
+        run: gradle assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: StreakSaver-Rust-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
