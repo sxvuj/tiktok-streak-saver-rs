@@ -1,0 +1,54 @@
+name: Android Rust Build & Parity Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  rust-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Clippy gate
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Unit tests
+        run: cargo test --workspace
+      - name: Replay rust-anything parity cases
+        run: cargo run -p streak-saver-cli -- parity-verify --cases rust-anything/cases.jsonl
+
+  android-apk:
+    needs: rust-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+      - name: Build 16KB-aligned JNI libraries
+        run: |
+          cargo ndk \
+            -t arm64-v8a \
+            -t armeabi-v7a \
+            -t x86_64 \
+            -o android/app/src/main/jniLibs \
+            build --release -p streak-saver-jni
+      - name: Assemble Android Debug APK
+        working-directory: android
+        run: gradle assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreakSaver-Rust-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
