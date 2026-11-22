@@ -73,7 +73,7 @@ expect history "Export log"
 
 tap_text history "Profile"; sleep 2; dump profile
 expect profile "Background automation"
-expect profile "Battery optimization"
+expect profile "Random messages"
 
 adb logcat -d > "$OUT/logcat.txt"
 if grep -E "FATAL EXCEPTION|UnsatisfiedLinkError|AndroidRuntime: Process: $PKG" "$OUT/logcat.txt"; then
