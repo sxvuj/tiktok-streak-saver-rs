@@ -19,8 +19,30 @@ dump() {
   adb pull /sdcard/ui.xml "$OUT/$1.xml" >/dev/null 2>&1
 }
 
+# Prints what is on screen so a failing run can be diagnosed from the job log alone.
+show() { # name
+  echo "--- screen '$1' shows:"
+  python3 - "$OUT/$1.xml" <<'PY'
+import re, sys
+xml = open(sys.argv[1], encoding="utf-8").read()
+seen = []
+for m in re.finditer(r'(?:text|content-desc)="([^"]+)"', xml):
+    if m.group(1) not in seen:
+        seen.append(m.group(1))
+print("; ".join(t[:60] for t in seen) or "(nothing)")
+PY
+}
+
 expect() { # name text
-  if grep -q "$2" "$OUT/$1.xml"; then echo "ok   $1: found '$2'"; else echo "FAIL $1: '$2' not on screen"; fail=1; fi
+  # Compose may still be loading data, so look for up to ~20 seconds.
+  for _ in 1 2 3 4 5 6 7 8; do
+    grep -q "$2" "$OUT/$1.xml" && { echo "ok   $1: found '$2'"; return; }
+    sleep 2
+    dump "$1"
+  done
+  echo "FAIL $1: '$2' not on screen"
+  show "$1"
+  fail=1
 }
 
 tap_text() { # xml-name text
@@ -54,5 +76,9 @@ expect profile "Battery optimization"
 adb logcat -d > "$OUT/logcat.txt"
 if grep -E "FATAL EXCEPTION|UnsatisfiedLinkError|AndroidRuntime: Process: $PKG" "$OUT/logcat.txt"; then
   echo "FAIL: crash found in logcat"; fail=1
+fi
+if [ "$fail" -ne 0 ]; then
+  echo "--- logcat (app, runtime and errors):"
+  grep -E "streaksaver|StreakService|AndroidRuntime|libstreak|E/" "$OUT/logcat.txt" | tail -60
 fi
 exit $fail
