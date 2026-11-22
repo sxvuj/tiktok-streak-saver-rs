@@ -49,6 +49,18 @@ pub fn validate_schedule_settings(settings: &AppSettings) -> Result<()> {
 ///   still in the future (> 60s from `now`), otherwise tomorrow at that time.
 /// - Otherwise schedules `interval_hours` (1..=23, default 23h) from `now`.
 pub fn compute_next_run(settings: &AppSettings, now: DateTime<Utc>) -> Result<ScheduleDecision> {
+    compute_next_run_with_offset(settings, now, 0)
+}
+
+/// Same as [`compute_next_run`], but the fixed daily time is read in the user's local time.
+///
+/// `utc_offset_minutes` is the phone's current offset from UTC (for example `420` for UTC+7).
+/// Interval mode does not depend on it.
+pub fn compute_next_run_with_offset(
+    settings: &AppSettings,
+    now: DateTime<Utc>,
+    utc_offset_minutes: i32,
+) -> Result<ScheduleDecision> {
     validate_schedule_settings(settings)?;
 
     if settings.use_fixed_time {
@@ -62,7 +74,10 @@ pub fn compute_next_run(settings: &AppSettings, now: DateTime<Utc>) -> Result<Sc
             minute: settings.fixed_time_minute,
         })?;
 
-        let today_dt = Utc.from_utc_datetime(&now.date_naive().and_time(target_time));
+        let offset = Duration::minutes(i64::from(utc_offset_minutes));
+        let local_now = now + offset;
+        let local_target = Utc.from_utc_datetime(&local_now.date_naive().and_time(target_time));
+        let today_dt = local_target - offset;
         let next_run_utc = if today_dt > now + Duration::seconds(60) {
             today_dt
         } else {
@@ -210,6 +225,47 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn fixed_time_is_read_in_local_time() {
+        let settings = AppSettings {
+            use_fixed_time: true,
+            fixed_time_hour: 9,
+            fixed_time_minute: 0,
+            ..AppSettings::default()
+        };
+        // 08:00 local (UTC+7) is 01:00 UTC, so 09:00 local today is 02:00 UTC.
+        let now = fixed_now(2026, 11, 22, 1, 0);
+        let decision = compute_next_run_with_offset(&settings, now, 420);
+        assert_eq!(
+            decision.map(|d| d.next_run_utc),
+            Ok(fixed_now(2026, 11, 22, 2, 0))
+        );
+        // 10:00 local is 03:00 UTC, already past 09:00 local, so it rolls to tomorrow.
+        let later = fixed_now(2026, 11, 22, 3, 0);
+        let decision = compute_next_run_with_offset(&settings, later, 420);
+        assert_eq!(
+            decision.map(|d| d.next_run_utc),
+            Ok(fixed_now(2026, 11, 23, 2, 0))
+        );
+    }
+
+    #[test]
+    fn fixed_time_local_day_can_differ_from_utc_day() {
+        let settings = AppSettings {
+            use_fixed_time: true,
+            fixed_time_hour: 6,
+            fixed_time_minute: 30,
+            ..AppSettings::default()
+        };
+        // 23:00 UTC on the 21st is 06:00 local on the 22nd, so 06:30 local is 23:30 UTC.
+        let now = fixed_now(2026, 11, 21, 23, 0);
+        let decision = compute_next_run_with_offset(&settings, now, 420);
+        assert_eq!(
+            decision.map(|d| d.next_run_utc),
+            Ok(fixed_now(2026, 11, 21, 23, 30))
+        );
     }
 
     #[test]
