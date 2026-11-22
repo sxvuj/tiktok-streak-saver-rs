@@ -10,6 +10,8 @@ mkdir -p "$OUT"
 fail=0
 
 adb install -r "$APK" || { echo "install failed"; exit 1; }
+# The runtime permission dialog would cover the first screen.
+adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
 adb logcat -c
 adb shell am start -W -n "$PKG/.ui.MainActivity" >/dev/null
 sleep 8
@@ -79,6 +81,6 @@ if grep -E "FATAL EXCEPTION|UnsatisfiedLinkError|AndroidRuntime: Process: $PKG" 
 fi
 if [ "$fail" -ne 0 ]; then
   echo "--- logcat (app, runtime and errors):"
-  grep -E "streaksaver|StreakService|AndroidRuntime|libstreak|E/" "$OUT/logcat.txt" | tail -60
+  grep -E "streaksaver|StreakService|AndroidRuntime: (Process|FATAL|Shutting down VM.*streak)|libstreak| E " "$OUT/logcat.txt" | grep -v "uiautomator\|RuntimeInit\|boot image\|lock profiling\|Shutting down VM" | tail -60
 fi
 exit $fail
