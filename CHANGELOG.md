@@ -3,6 +3,33 @@
 All notable changes to Streak Saver RS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-23
+
+The app is now usable on its own: the placeholder screens are replaced and the background service records what it does.
+
+### Added
+- Home, Chats, History and Profile screens in Material 3 with light and dark themes.
+- Friends and groups: search, per-chat switch, add, edit, delete, Turn all on / off, and import or export of the list as JSON. The importer accepts differently cased keys, wrapped lists and several date formats.
+- History: success ring, run log with per-chat failures, Retry failed, Export log and Clear. Skipped runs (offline, logged out, page did not load) are recorded with the reason.
+- Live run progress and a Stop button on Home and in the notification.
+- Update check on Home and Profile, with a banner when a newer release exists.
+- Shortcuts to battery optimization, exact alarm and notification settings.
+- `scripts/make-keystore.sh` creates the release keystore and prints the `gh secret set` commands.
+
+### Fixed
+- The service never wrote history or per-chat counters. It now runs the tested Rust `RunSession`, so sent counts, failures, last-sent times and the three-strikes auto-disable are saved after every chat.
+- The first alarm was never armed after enabling automation, and a run with nothing to send stopped without arming the next one. Every run now ends by arming the next alarm.
+- The "already messaged today" check used the UTC calendar day, which skipped a whole run with the 23 hour interval. It now uses an elapsed-time window.
+- A fixed daily time was read as UTC. It now uses the phone's local time zone, and is recomputed when the time zone changes.
+- The dashboard "next run" was computed on screen as now plus the interval. It now shows the stored alarm time.
+- Alarms are restored after an app update as well as after a reboot, and when the app is opened and the alarm is missing.
+- The login page is now inset from the status and navigation bars, which Android 15 no longer does automatically.
+
+### Changed
+- Removed the `REQUEST_INSTALL_PACKAGES` and `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permissions and the unused FileProvider.
+- Release tags now fail in CI unless the permanent signing secrets are set. Branch and pull request builds still use a throwaway key.
+- A run is stopped after 25 minutes, and a chat that does not answer within 90 seconds counts as a failed attempt.
+
 ## [1.0.0] - 2026-11-22
 
 First release of Streak Saver RS, a Rust rewrite and fork of [Jon2G/TiktokStreakSaver](https://github.com/Jon2G/TiktokStreakSaver).

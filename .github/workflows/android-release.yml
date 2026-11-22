@@ -105,9 +105,10 @@ jobs:
           done
           exit $fail
 
-      # Uses the repository secrets when they exist. Without them a throwaway key is generated,
-      # which still gives an installable APK, but every build then has a different signature,
-      # so Android will refuse to update over an older install. See README, "Release signing".
+      # Release builds (version tags) must be signed with the permanent key from the repository
+      # secrets, otherwise users could not update over an older install and the signature would
+      # change every release. Branch and pull request builds fall back to a throwaway key so they
+      # still produce a test APK. See README, "Release signing" and scripts/make-keystore.sh.
       - name: Prepare release signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -122,6 +123,9 @@ jobs:
             ALIAS="$SECRET_KEY_ALIAS"
             KEY_PASS="$SECRET_KEY_PASSWORD"
             echo "Signing with the keystore from repository secrets."
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "::error::Release tags need the signing secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. Run scripts/make-keystore.sh and add them under Settings > Secrets and variables > Actions."
+            exit 1
           else
             echo "::warning::No signing secrets configured. Using a throwaway key; this APK cannot update an install signed with a different key."
             STORE_PASS="$(openssl rand -hex 16)"
