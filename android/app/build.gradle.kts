@@ -5,23 +5,39 @@ plugins {
 }
 
 android {
-    namespace = "com.jon2g.tiktokstreaksaver"
+    namespace = "com.sxvuj.streaksaver"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.jon2g.tiktokstreaksaver"
+        applicationId = "com.sxvuj.streaksaver"
         minSdk = 24
         targetSdk = 35
-        versionCode = 220
-        versionName = "2.2.0-rust"
+        versionCode = 1
+        versionName = "1.0.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
+    // Release signing is read from the environment so no secret is ever committed.
+    // CI provides KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD.
+    val keystorePath: String? = System.getenv("KEYSTORE_PATH")
+    signingConfigs {
+        if (!keystorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Null (unsigned) when no keystore is configured, e.g. a plain local build.
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

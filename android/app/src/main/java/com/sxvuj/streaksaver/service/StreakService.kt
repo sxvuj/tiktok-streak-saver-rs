@@ -1,4 +1,4 @@
-package com.jon2g.tiktokstreaksaver.service
+package com.sxvuj.streaksaver.service
 
 import android.annotation.SuppressLint
 import android.app.AlarmManager
@@ -23,8 +23,8 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.app.NotificationCompat
-import com.jon2g.tiktokstreaksaver.receiver.AlarmReceiver
-import com.jon2g.tiktokstreaksaver.rust.RustCore
+import com.sxvuj.streaksaver.receiver.AlarmReceiver
+import com.sxvuj.streaksaver.rust.RustCore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean

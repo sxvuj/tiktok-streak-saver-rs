@@ -1,4 +1,4 @@
-package com.jon2g.tiktokstreaksaver.ui
+package com.sxvuj.streaksaver.ui
 
 import android.content.Intent
 import android.os.Bundle
@@ -29,8 +29,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.jon2g.tiktokstreaksaver.rust.RustCore
-import com.jon2g.tiktokstreaksaver.service.StreakService
+import com.sxvuj.streaksaver.rust.RustCore
+import com.sxvuj.streaksaver.service.StreakService
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,7 +103,7 @@ private fun DashboardTab(
 ) {
     val nextRunJson = remember(storageDir) { RustCore.computeNextRunJson(storageDir) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Streak Saver (Rust Core v2.2.0)", style = MaterialTheme.typography.headlineSmall)
+        Text("Streak Saver RS", style = MaterialTheme.typography.headlineSmall)
         Text("Next run: $nextRunJson", style = MaterialTheme.typography.bodyMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = onOpenLogin) { Text("TikTok Login") }

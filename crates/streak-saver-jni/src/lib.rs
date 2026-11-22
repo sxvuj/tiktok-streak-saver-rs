@@ -2,7 +2,7 @@
 // JNI exports must be `#[no_mangle]`, which the workspace `unsafe_code` lint rejects.
 #![allow(unsafe_code)]
 
-//! Android JNI entry points for `com.jon2g.tiktokstreaksaver.rust.RustCore`.
+//! Android JNI entry points for `com.sxvuj.streaksaver.rust.RustCore`.
 //!
 //! Follows the `erkamyaman/rust-anything` Android profile: all business logic lives in
 //! `streak-saver-core`, and the thin Kotlin Android shell crosses JNI via JSON payloads
@@ -75,7 +75,7 @@ fn json_err(env: &mut JNIEnv<'_>, msg: impl Into<String>) -> jstring {
 
 /// `RustCore.guardLoginUrl(url: String): String` (JSON `LoginNavDecision`)
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_guardLoginUrl(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_guardLoginUrl(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     url: JString<'_>,
@@ -88,7 +88,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_guardLogin
 
 /// `RustCore.hasValidSessionCookie(cookieHeader: String): Boolean`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_hasValidSessionCookie(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_hasValidSessionCookie(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     cookie_header: JString<'_>,
@@ -105,7 +105,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_hasValidSe
 
 /// `RustCore.resolveUserAgent(capturedUa: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_resolveUserAgent(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_resolveUserAgent(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     captured_ua: JString<'_>,
@@ -119,7 +119,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_resolveUse
 
 /// `RustCore.computeViewportJson(density: Float): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_computeViewportJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_computeViewportJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     density: jfloat,
@@ -130,7 +130,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_computeVie
 
 /// `RustCore.renderAutomationScript(username: String, message: String, isGroup: Boolean): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_renderAutomationScript(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_renderAutomationScript(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     username: JString<'_>,
@@ -149,7 +149,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_renderAuto
 
 /// `RustCore.pickRandomMessage(): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_pickRandomMessage(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_pickRandomMessage(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
@@ -160,7 +160,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_pickRandom
 
 /// `RustCore.computeNextRunJson(storageDir: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_computeNextRunJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_computeNextRunJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -179,7 +179,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_computeNex
 
 /// `RustCore.evaluateRetryScheduleJson(storageDir: String, failureReason: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_evaluateRetryScheduleJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_evaluateRetryScheduleJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -205,7 +205,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_evaluateRe
 
 /// `RustCore.recordCleanRunSuccess(storageDir: String): Boolean`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_recordCleanRunSuccess(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_recordCleanRunSuccess(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -227,7 +227,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_recordClea
 
 /// `RustCore.shouldAnticipateBatteryLow(storageDir: String): Boolean`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_shouldAnticipateBatteryLow(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_shouldAnticipateBatteryLow(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -254,7 +254,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_shouldAnti
 
 /// `RustCore.buildRunPlanJson(storageDir: String, targetedIdsCsv: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_buildRunPlanJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_buildRunPlanJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -292,7 +292,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_buildRunPl
 
 /// `RustCore.loadSettingsJson(storageDir: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_loadSettingsJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_loadSettingsJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -310,7 +310,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_loadSettin
 
 /// `RustCore.saveSettingsJson(storageDir: String, settingsJson: String): Boolean`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_saveSettingsJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_saveSettingsJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -333,7 +333,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_saveSettin
 
 /// `RustCore.loadFriendsJson(storageDir: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_loadFriendsJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_loadFriendsJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -351,7 +351,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_loadFriend
 
 /// `RustCore.saveFriendsJson(storageDir: String, friendsJson: String): Boolean`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_saveFriendsJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_saveFriendsJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -375,7 +375,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_saveFriend
 /// `RustCore.appendRunResultJson(storageDir: String, runResultJson: String): Long`
 /// Returns updated history count, or -1 on error.
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_appendRunResultJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_appendRunResultJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -399,7 +399,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_appendRunR
 
 /// `RustCore.loadHistoryStatsJson(storageDir: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_loadHistoryStatsJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_loadHistoryStatsJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     storage_dir: JString<'_>,
@@ -418,7 +418,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_loadHistor
 
 /// `RustCore.checkReleaseUpdateJson(currentVersion: String, githubReleaseJson: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_checkReleaseUpdateJson(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_checkReleaseUpdateJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     current_version: JString<'_>,
@@ -437,7 +437,7 @@ pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_checkRelea
 
 /// `RustCore.normalizeChatPriority(raw: String): String`
 #[no_mangle]
-pub extern "system" fn Java_com_jon2g_tiktokstreaksaver_rust_RustCore_normalizeChatPriority(
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_normalizeChatPriority(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     raw: JString<'_>,

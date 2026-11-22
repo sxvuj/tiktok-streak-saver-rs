@@ -7,11 +7,11 @@ members = [
 ]
 
 [workspace.package]
-version = "2.2.0"
+version = "1.0.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/Jon2G/TiktokStreakSaver"
-authors = ["Jon2G", "Rust Port Contributors"]
+repository = "https://github.com/sxvuj/tiktok-streak-saver-rs"
+authors = ["sxvuj", "Jon2G (original TiktokStreakSaver)"]
 
 [workspace.dependencies]
 chrono = { version = "0.4", features = ["serde"] }

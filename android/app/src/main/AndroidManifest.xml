@@ -15,7 +15,8 @@
 
     <application
         android:allowBackup="false"
-        android:label="Streak Saver"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Streak Saver RS"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false">
 
@@ -43,7 +44,7 @@
             android:name=".receiver.AlarmReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.jon2g.tiktokstreaksaver.ACTION_STREAK_ALARM" />
+                <action android:name="com.sxvuj.streaksaver.ACTION_STREAK_ALARM" />
             </intent-filter>
         </receiver>
 

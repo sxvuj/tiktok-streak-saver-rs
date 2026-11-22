@@ -1,6 +1,6 @@
 [package]
 name = "streak-saver-core"
-description = "Pure Rust core engine for TikTok Streak Saver (ported from Jon2G/TiktokStreakSaver v2.2.0)"
+description = "Pure Rust core engine for TikTok Streak Saver (based on Jon2G/TiktokStreakSaver v2.2.0)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

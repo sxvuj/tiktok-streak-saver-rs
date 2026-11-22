@@ -1,11 +1,11 @@
-package com.jon2g.tiktokstreaksaver.receiver
+package com.sxvuj.streaksaver.receiver
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
-import com.jon2g.tiktokstreaksaver.rust.RustCore
-import com.jon2g.tiktokstreaksaver.service.StreakService
+import com.sxvuj.streaksaver.rust.RustCore
+import com.sxvuj.streaksaver.service.StreakService
 
 class BatteryLowReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

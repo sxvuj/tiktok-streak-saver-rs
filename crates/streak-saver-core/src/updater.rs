@@ -4,12 +4,12 @@ use std::cmp::Ordering;
 use crate::error::{Result, StreakError};
 use crate::models::UpdateInfo;
 
-/// GitHub Releases API endpoint matching `UpdateService` in v2.2.0.
+/// GitHub Releases API endpoint for this fork (sxvuj/tiktok-streak-saver-rs).
 pub const GITHUB_LATEST_RELEASE_URL: &str =
-    "https://api.github.com/repos/Jon2G/TiktokStreakSaver/releases/latest";
+    "https://api.github.com/repos/sxvuj/tiktok-streak-saver-rs/releases/latest";
 
 /// User-Agent header required by the GitHub API.
-pub const UPDATER_USER_AGENT: &str = "TiktokStreakSaver/1.0";
+pub const UPDATER_USER_AGENT: &str = "StreakSaverRS/1.0";
 
 /// Expected APK asset filename prefix.
 pub const APK_ASSET_PREFIX: &str = "StreakSaver-";
@@ -100,7 +100,7 @@ mod tests {
         let json = r#"{
             "tag_name": "v2.3.0",
             "body": "Bug fixes",
-            "html_url": "https://github.com/Jon2G/TiktokStreakSaver/releases/tag/v2.3.0",
+            "html_url": "https://github.com/sxvuj/tiktok-streak-saver-rs/releases/tag/v1.1.0",
             "assets": [
                 {"name": "StreakSaver.ipa", "browser_download_url": "https://example.com/app.ipa"},
                 {"name": "StreakSaver-v2.3.0.apk", "browser_download_url": "https://example.com/StreakSaver-v2.3.0.apk"}

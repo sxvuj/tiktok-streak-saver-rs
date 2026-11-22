@@ -1,4 +1,4 @@
-package com.jon2g.tiktokstreaksaver.ui
+package com.sxvuj.streaksaver.ui
 
 import android.annotation.SuppressLint
 import android.os.Bundle
@@ -7,7 +7,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
-import com.jon2g.tiktokstreaksaver.rust.RustCore
+import com.sxvuj.streaksaver.rust.RustCore
 import org.json.JSONObject
 
 /**

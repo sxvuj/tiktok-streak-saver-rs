@@ -1,9 +1,9 @@
-package com.jon2g.tiktokstreaksaver.rust
+package com.sxvuj.streaksaver.rust
 
 /**
  * JNI bridge to `libstreak_saver_jni.so` (`crates/streak-saver-jni`).
  *
- * Every method signature here maps 1:1 to an exported `Java_com_jon2g_tiktokstreaksaver_rust_RustCore_*`
+ * Every method signature here maps 1:1 to an exported `Java_com_sxvuj_streaksaver_rust_RustCore_*`
  * symbol in `crates/streak-saver-jni/src/lib.rs`.
  */
 object RustCore {
