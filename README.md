@@ -14,7 +14,7 @@
 
 Streak Saver RS sends a short message to the TikTok friends and group chats you choose, on a schedule, so a forgotten day does not break a streak. All scheduling and decision logic lives in a Rust core. The Android app is a thin Kotlin and Jetpack Compose shell around it.
 
-This project is a fork of [Jon2G/TiktokStreakSaver](https://github.com/Jon2G/TiktokStreakSaver) (a .NET MAUI app), rewritten in Rust. It is not affiliated with TikTok or ByteDance.
+This project is derived from [Jon2G/TiktokStreakSaver](https://github.com/Jon2G/TiktokStreakSaver) (a .NET MAUI app) and rewritten in Rust, under the original's MIT License. See [License and credits](#license-and-credits). It is not affiliated with TikTok or ByteDance.
 
 ## Download
 
@@ -179,7 +179,7 @@ There are no analytics, ads or developer-owned servers in this project. The app 
 
 ## License and credits
 
-Released under the [MIT License](LICENSE). The original work is copyright (c) 2024 jon2g and this fork is copyright (c) 2026 sxvuj.
+Released under the [MIT License](LICENSE). The original work is copyright (c) 2024 jon2g and the Rust rewrite is copyright (c) 2026 sxvuj
 
 - [Jon2G/TiktokStreakSaver](https://github.com/Jon2G/TiktokStreakSaver): the original app this project is based on, including the TikTok automation scripts and the behavior the Rust core reproduces.
 - [eulfn/streak-tiktok](https://github.com/eulfn/streak-tiktok): the multi-page redesign and stability work that the upstream app builds on.
