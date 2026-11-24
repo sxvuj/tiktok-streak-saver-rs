@@ -1,17 +1,12 @@
 package com.sxvuj.streaksaver.service
 
 import android.annotation.SuppressLint
-import android.app.AlarmManager
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -20,22 +15,27 @@ import android.util.Log
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.core.app.NotificationCompat
-import com.sxvuj.streaksaver.receiver.AlarmReceiver
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
+import com.sxvuj.streaksaver.data.Reply
+import com.sxvuj.streaksaver.data.RunOutcome
+import com.sxvuj.streaksaver.data.StreakRepo
+import com.sxvuj.streaksaver.data.Step
 import com.sxvuj.streaksaver.rust.RustCore
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Android Foreground Service for background TikTok streak messaging.
+ * Foreground service that sends the streak messages.
  *
- * Mirrors `Jon2G/TiktokStreakSaver` v2.2.0 `StreakService`:
- * - Creates the headless WebView on the main thread sized to 1920x1080 density-scaled pixels.
- * - Delegates scheduling, retry budgets, run planning, UA fallback, and JS rendering to `RustCore`.
- * - Resets the static running mutex in `onDestroy` so an OS kill cannot wedge future runs.
+ * All planning, retries, per-chat counters, the three-strikes auto-disable and the history entry
+ * live in the Rust `RunSession`; this class only hosts a headless WebView, injects the scripts the
+ * core hands out, reports what the page answered and keeps the next alarm armed.
+ *
+ * Every path ends in [finishRun] or [abort], so the next run is always scheduled and the history
+ * always shows what happened, including runs that never got to send anything.
  */
 class StreakService : Service() {
 
@@ -43,153 +43,315 @@ class StreakService : Service() {
         private const val TAG = "StreakService"
         const val ACTION_STOP_SERVICE = "STOP_SERVICE"
         const val EXTRA_TARGET_FRIEND_IDS = "target_friend_ids"
-        const val CHANNEL_SERVICE = "streak_service_channel"
-        const val CHANNEL_STATUS = "streak_status_channel"
-        private const val NOTIF_ID_SERVICE = 1001
-        private const val NOTIF_ID_STATUS = 1002
+        const val EXTRA_MANUAL = "manual"
         private const val MESSAGES_URL = "https://www.tiktok.com/messages?lang=en"
+        private const val PAGE_TIMEOUT_MS = 60_000L
+        private const val SEND_TIMEOUT_MS = 90_000L
+        private const val RUN_DEADLINE_MS = 25L * 60L * 1000L
 
-        val isRunning = AtomicBoolean(false)
+        /** Starts a run. [manual] runs report "nothing to send"; scheduled runs stay quiet about it. */
+        fun start(context: Context, targetIds: List<String> = emptyList(), manual: Boolean = false) {
+            val intent = Intent(context, StreakService::class.java).putExtra(EXTRA_MANUAL, manual)
+            if (targetIds.isNotEmpty()) intent.putExtra(EXTRA_TARGET_FRIEND_IDS, targetIds.joinToString(","))
+            ContextCompat.startForegroundService(context, intent)
+        }
 
-        fun scheduleAlarmAt(context: Context, triggerAtMillis: Long) {
-            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val intent = Intent(context, AlarmReceiver::class.java).apply {
-                action = AlarmReceiver.ACTION_STREAK_ALARM
-            }
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            val pi = PendingIntent.getBroadcast(context, 0, intent, flags)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
-            } else {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
-            }
+        /** Asks a running service to stop after the chat it is on. Harmless when nothing runs. */
+        fun requestStop(context: Context) {
+            context.startService(Intent(context, StreakService::class.java).setAction(ACTION_STOP_SERVICE))
         }
     }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val main = Handler(Looper.getMainLooper())
+    private lateinit var repo: StreakRepo
     private var wakeLock: PowerManager.WakeLock? = null
     private var webView: WebView? = null
-    private val targets = mutableListOf<JSONObject>()
-    private var currentIndex = 0
-    private var sentCount = 0
-    private var failedCount = 0
-    private var customMessage = "Hey! Keeping our streak alive! 🔥"
-    private var randomizeMessages = false
-    private var storageDirPath = ""
+
+    private var runActive = false
+    private var sessionOpen = false
+    private var manual = false
+    private var userStopped = false
+    private var pageHandled = false
+    private var generation = 0
+    private var firstStep: Step.Inject? = null
+    private var awaiting: Step.Inject? = null
+
+    private val sendWatchdog = Runnable { onSendTimeout() }
+    private val pageWatchdog = Runnable {
+        if (runActive && !pageHandled) abort("TikTok did not load in time.", retryReason = "send_error")
+    }
+    private val deadline = Runnable {
+        if (runActive) finishRun(note = "Stopped after 25 minutes.")
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Notifications.ensureChannels(this)
+
         if (intent?.action == ACTION_STOP_SERVICE) {
-            Log.i(TAG, "Service stop requested by user")
-            finishAndStop("Run stopped by user.", hadErrors = false)
+            if (runActive) {
+                userStopped = true
+                RunStatus.state.value = RunStatus.state.value.copy(stopping = true)
+                finishRun(note = "Stopped by you.")
+            } else {
+                stopSelf()
+            }
             return START_NOT_STICKY
         }
 
-        if (!isRunning.compareAndSet(false, true)) {
-            Log.w(TAG, "OnStartCommand ignored — automation already running")
+        // startForegroundService() demands startForeground() right away, even if a run is already going.
+        try {
+            ServiceCompat.startForeground(
+                this,
+                Notifications.ID_RUN,
+                Notifications.runProgress(this, "Getting ready…"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Android refused to start the foreground service", e)
+            repo = StreakRepo(this)
+            repo.recordSkippedRun("Android would not let the app run in the background.")
+            Notifications.status(this, "Streak run skipped", "Android would not start the background run. Open the app and tap Run now.")
+            if (repo.settings().scheduled) Scheduler.armFromSettings(this)
+            stopSelf()
             return START_NOT_STICKY
         }
 
-        storageDirPath = filesDir.absolutePath
-        ensureChannels()
-        startForeground(NOTIF_ID_SERVICE, buildProgressNotification("Preparing to send streaks..."))
-        acquireWakeLock()
+        if (runActive) return START_NOT_STICKY
 
-        if (!hasActiveNetwork()) {
-            handleOfflineSkip()
-            return START_NOT_STICKY
-        }
-
-        val targetedIds = intent?.getStringExtra(EXTRA_TARGET_FRIEND_IDS).orEmpty()
-        prepareAndStartWebView(targetedIds)
+        repo = StreakRepo(this)
+        manual = intent?.getBooleanExtra(EXTRA_MANUAL, false) ?: false
+        beginRun(intent?.getStringExtra(EXTRA_TARGET_FRIEND_IDS).orEmpty())
         return START_NOT_STICKY
     }
 
-    private fun prepareAndStartWebView(targetedIdsCsv: String) {
-        val settingsWrapper = JSONObject(RustCore.loadSettingsJson(storageDirPath))
-        val settings = settingsWrapper.optJSONObject("data") ?: JSONObject()
-        customMessage = settings.optString("message_text", customMessage)
-        randomizeMessages = settings.optBoolean("randomize_normal_messages", false)
+    // --- Run lifecycle -------------------------------------------------------------------------
 
-        val planWrapper = JSONObject(RustCore.buildRunPlanJson(storageDirPath, targetedIdsCsv))
-        val plan = planWrapper.optJSONObject("data") ?: JSONObject()
-        val arr = plan.optJSONArray("targets") ?: JSONArray()
-        targets.clear()
-        for (i in 0 until arr.length()) {
-            targets.add(arr.getJSONObject(i))
-        }
+    private fun beginRun(targetedCsv: String) {
+        runActive = true
+        sessionOpen = false
+        userStopped = false
+        pageHandled = false
+        firstStep = null
+        awaiting = null
+        generation++
+        RunStatus.state.value = RunStatus.State(running = true, current = "Getting ready…")
+        acquireWakeLock()
+        main.postDelayed(deadline, RUN_DEADLINE_MS)
 
-        if (targets.isEmpty()) {
-            finishAndStop("All friends already messaged today or none configured.", hadErrors = false)
+        if (!hasNetwork()) {
+            abort("No internet connection.", retryReason = "no_network")
             return
         }
 
         val cookies = CookieManager.getInstance().getCookie("https://www.tiktok.com").orEmpty()
         if (!RustCore.hasValidSessionCookie(cookies)) {
-            postStatusNotification("TikTok login required", "Please login via the app first.")
-            finishAndStop("TikTok login required.", hadErrors = true)
+            repo.updateSession(valid = false)
+            abort("TikTok login expired. Open the app and log in again.", retryReason = null)
             return
         }
 
-        mainHandler.post { initHeadlessWebView() }
+        val reply = Reply.parse(RustCore.runStartJson(filesDir.absolutePath, targetedCsv))
+        val data = reply.obj
+        if (!reply.ok || data == null) {
+            abort("Could not start the run: ${reply.error}", retryReason = "send_error")
+            return
+        }
+        sessionOpen = true
+
+        when (val step = Step.from(data)) {
+            is Step.Done -> finishRun()
+            is Step.Inject -> {
+                firstStep = step
+                openMessagesPage()
+            }
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun initHeadlessWebView() {
-        val density = resources.displayMetrics.density
-        val vpWrapper = JSONObject(RustCore.computeViewportJson(density))
-        val vp = vpWrapper.optJSONObject("data")
-        val widthPx = vp?.optInt("width_px", 1920) ?: 1920
-        val heightPx = vp?.optInt("height_px", 1080) ?: 1080
+    private fun openMessagesPage() {
+        val viewport = Reply.parse(RustCore.computeViewportJson(resources.displayMetrics.density)).obj
+        val widthPx = viewport?.optInt("width_px", 1920) ?: 1920
+        val heightPx = viewport?.optInt("height_px", 1080) ?: 1080
+        val gen = generation
 
-        val wv = WebView(applicationContext).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.userAgentString = RustCore.resolveUserAgent("")
-            addJavascriptInterface(StreakJsBridge(), "StreakApp")
-            measure(
-                View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
-            )
-            layout(0, 0, widthPx, heightPx)
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    if (url != null && url.contains("tiktok.com/messages")) {
-                        injectNextFriend()
+        val view = WebView(applicationContext)
+        view.settings.javaScriptEnabled = true
+        view.settings.domStorageEnabled = true
+        view.settings.userAgentString = RustCore.resolveUserAgent("")
+        CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
+        view.addJavascriptInterface(Bridge(gen), "StreakApp")
+        view.measure(
+            View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY),
+        )
+        view.layout(0, 0, widthPx, heightPx)
+        view.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                if (!runActive || pageHandled || gen != generation) return
+                val address = url.orEmpty()
+                when {
+                    address.contains("/login") -> {
+                        repo.updateSession(valid = false)
+                        abort("TikTok login expired. Open the app and log in again.", retryReason = null)
+                    }
+                    address.contains("tiktok.com/messages") -> {
+                        pageHandled = true
+                        main.removeCallbacks(pageWatchdog)
+                        firstStep?.let { inject(it) }
                     }
                 }
             }
+
+            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                if (!runActive || pageHandled || gen != generation) return
+                if (request?.isForMainFrame == true) {
+                    abort("TikTok could not be loaded (${error?.description ?: "network error"}).", retryReason = "send_error")
+                }
+            }
         }
-        webView = wv
-        wv.loadUrl(MESSAGES_URL)
+        webView = view
+        main.postDelayed(pageWatchdog, PAGE_TIMEOUT_MS)
+        view.loadUrl(MESSAGES_URL)
     }
 
-    private fun injectNextFriend() {
-        if (currentIndex >= targets.size) {
-            val summary = "Done: $sentCount sent, $failedCount failed"
-            if (failedCount == 0) {
-                RustCore.recordCleanRunSuccess(storageDirPath)
-                scheduleNormalNextRun()
-            } else {
-                scheduleRetryOrNormal("send_error")
-            }
-            postStatusNotification("TikTok Streak Saver", summary)
-            finishAndStop(summary, hadErrors = failedCount > 0)
+    private fun inject(step: Step.Inject) {
+        awaiting = step
+        RunStatus.state.value = RunStatus.State(running = true, index = step.index, total = step.total, current = step.target)
+        Notifications.updateRunProgress(this, "${step.index}/${step.total} · ${step.target}", step.index - 1, step.total)
+        webView?.evaluateJavascript(step.script, null)
+        main.removeCallbacks(sendWatchdog)
+        main.postDelayed(sendWatchdog, SEND_TIMEOUT_MS)
+    }
+
+    private fun onSendTimeout() {
+        val step = awaiting ?: return
+        if (runActive) handleCallback(step.target, success = false, error = "Timed out waiting for TikTok")
+    }
+
+    private fun handleCallback(user: String, success: Boolean, error: String) {
+        main.removeCallbacks(sendWatchdog)
+        if (!runActive || !sessionOpen) return
+        val reply = Reply.parse(RustCore.runCallbackJson(user, success, error))
+        val data = reply.obj
+        if (!reply.ok || data == null) {
+            Log.w(TAG, "Run state lost: ${reply.error}")
+            finishRun()
             return
         }
-
-        val friend = targets[currentIndex]
-        val username = friend.optString("Username", "")
-        val isGroup = friend.optBoolean("IsGroup", false)
-        val msg = if (randomizeMessages) RustCore.pickRandomMessage() else customMessage
-        val script = RustCore.renderAutomationScript(username, msg, isGroup)
-
-        updateProgressNotification("Sending ${currentIndex + 1}/${targets.size}: $username")
-        mainHandler.post { webView?.evaluateJavascript(script, null) }
+        when (val step = Step.from(data)) {
+            is Step.Inject -> inject(step)
+            is Step.Done -> finishRun()
+        }
     }
 
-    private inner class StreakJsBridge {
+    /** Ends the run normally: saves history, plans the next run, tells the user, shuts down. */
+    private fun finishRun(note: String? = null) {
+        if (!runActive) return
+        val outcome: RunOutcome? = if (sessionOpen) {
+            sessionOpen = false
+            Reply.parse(RustCore.runFinishJson()).obj?.let { RunOutcome.from(it) }
+        } else {
+            null
+        }
+
+        var retryNote = ""
+        if (repo.settings().scheduled) {
+            val failed = outcome?.failed ?: 0
+            if (failed > 0 && !userStopped) {
+                val delay = repo.retryDelayMs("send_error")
+                if (delay != null) {
+                    Scheduler.armIn(this, delay)
+                    retryNote = " Retrying failed chats in 1 hour."
+                } else {
+                    Scheduler.armFromSettings(this)
+                }
+            } else {
+                if (outcome != null && outcome.total > 0 && failed == 0) repo.recordCleanRun()
+                Scheduler.armFromSettings(this)
+            }
+        }
+
+        val text = when {
+            outcome == null -> note ?: "Run ended."
+            outcome.total == 0 -> note ?: "Nothing to send, everyone is up to date."
+            else -> buildString {
+                append("Sent ${outcome.sent} of ${outcome.total}")
+                if (outcome.failed > 0) append(" · ${outcome.failed} failed")
+                if (outcome.autoDisabled > 0) append(" · ${outcome.autoDisabled} turned off after repeated errors")
+                append('.')
+                if (note != null) append(' ').append(note)
+                append(retryNote)
+            }
+        }
+        val quiet = outcome != null && outcome.total == 0 && !manual && note == null
+        if (!quiet) Notifications.status(this, "Streak Saver", text)
+        cleanup()
+    }
+
+    /** Ends a run that could not send anything: records why, schedules a retry if sensible. */
+    private fun abort(message: String, retryReason: String?) {
+        if (!runActive) return
+        if (sessionOpen) {
+            sessionOpen = false
+            runCatching { RustCore.runFinishJson() }
+        }
+        repo.recordSkippedRun(message)
+
+        var tail = ""
+        if (retryReason != null && repo.settings().scheduled) {
+            val delay = repo.retryDelayMs(retryReason)
+            if (delay != null) {
+                Scheduler.armIn(this, delay)
+                tail = " Trying again in 1 hour."
+            } else {
+                Scheduler.armFromSettings(this)
+                tail = " Next try at the usual time."
+            }
+        }
+        Notifications.status(this, "Streak run skipped", message + tail)
+        cleanup()
+    }
+
+    private fun cleanup(stopService: Boolean = true) {
+        main.removeCallbacks(sendWatchdog)
+        main.removeCallbacks(pageWatchdog)
+        main.removeCallbacks(deadline)
+        generation++
+        webView?.let { view ->
+            view.stopLoading()
+            view.removeJavascriptInterface("StreakApp")
+            view.destroy()
+        }
+        webView = null
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+        runActive = false
+        RunStatus.state.value = RunStatus.State()
+        if (stopService) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
+    override fun onDestroy() {
+        if (runActive) {
+            // The system took the service away mid-run. Counters were saved after every chat; keep the
+            // history entry and make sure the next run is still armed.
+            if (sessionOpen) {
+                sessionOpen = false
+                runCatching { RustCore.runFinishJson() }
+            }
+            runCatching { if (repo.settings().scheduled) Scheduler.armFromSettings(this) }
+            cleanup(stopService = false)
+        }
+        super.onDestroy()
+    }
+
+    // --- Helpers -------------------------------------------------------------------------------
+
+    private inner class Bridge(private val gen: Int) {
         @JavascriptInterface
         fun log(msg: String) {
             Log.d("StreakJS", msg)
@@ -197,120 +359,24 @@ class StreakService : Service() {
 
         @JavascriptInterface
         fun onMessageSent(userName: String, success: Boolean, errorMessage: String) {
-            if (success) {
-                sentCount++
-            } else {
-                failedCount++
-                Log.w(TAG, "Failed for $userName: $errorMessage")
+            main.post {
+                if (gen == generation) handleCallback(userName, success, errorMessage)
             }
-            currentIndex++
-            mainHandler.post { injectNextFriend() }
         }
     }
 
-    private fun handleOfflineSkip() {
-        scheduleRetryOrNormal("no_network")
-        postStatusNotification(
-            "TikTok Streak Saver — offline",
-            "No Wi-Fi or mobile data. Streak run skipped; retrying in 1 hour."
-        )
-        finishAndStop("Skipped: no network", hadErrors = true)
-    }
-
-    private fun scheduleNormalNextRun() {
-        val res = JSONObject(RustCore.computeNextRunJson(storageDirPath))
-        val delayMs = res.optJSONObject("data")?.optLong("delay_ms", 23L * 3600L * 1000L)
-            ?: (23L * 3600L * 1000L)
-        scheduleAlarmAt(applicationContext, System.currentTimeMillis() + delayMs)
-    }
-
-    private fun scheduleRetryOrNormal(reason: String) {
-        val res = JSONObject(RustCore.evaluateRetryScheduleJson(storageDirPath, reason))
-        val data = res.optJSONObject("data")
-        val retryObj = data?.optJSONObject("RetryInOneHour")
-        if (retryObj != null) {
-            scheduleAlarmAt(applicationContext, System.currentTimeMillis() + 3600L * 1000L)
-        } else {
-            scheduleNormalNextRun()
-        }
-    }
-
-    private fun hasActiveNetwork(): Boolean {
+    private fun hasNetwork(): Boolean {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val net = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(net) ?: return false
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private fun acquireWakeLock() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "TiktokStreakSaver::StreakWakeLock"
-        ).apply { acquire(10 * 60 * 1000L) }
-    }
-
-    private fun ensureChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_SERVICE,
-                    "TikTok Streak Saver",
-                    NotificationManager.IMPORTANCE_LOW
-                )
-            )
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_STATUS,
-                    "Streak status",
-                    NotificationManager.IMPORTANCE_DEFAULT
-                )
-            )
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "StreakSaver::Run").apply {
+            setReferenceCounted(false)
+            acquire(RUN_DEADLINE_MS + 60_000L)
         }
-    }
-
-    private fun buildProgressNotification(text: String): Notification =
-        NotificationCompat.Builder(this, CHANNEL_SERVICE)
-            .setContentTitle("TikTok Streak Saver")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_email)
-            .setOngoing(true)
-            .build()
-
-    private fun updateProgressNotification(text: String) {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIF_ID_SERVICE, buildProgressNotification(text))
-    }
-
-    private fun postStatusNotification(title: String, text: String) {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notif = NotificationCompat.Builder(this, CHANNEL_STATUS)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setAutoCancel(true)
-            .build()
-        nm.notify(NOTIF_ID_STATUS, notif)
-    }
-
-    private fun finishAndStop(summary: String, hadErrors: Boolean) {
-        Log.i(TAG, "Finishing service (hadErrors=$hadErrors): $summary")
-        mainHandler.post {
-            webView?.destroy()
-            webView = null
-        }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
-        webView?.destroy()
-        webView = null
-        // Safety net: reset static mutex even if system kills the service.
-        isRunning.set(false)
     }
 }

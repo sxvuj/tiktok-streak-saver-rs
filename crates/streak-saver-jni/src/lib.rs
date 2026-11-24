@@ -8,9 +8,11 @@
 //! `streak-saver-core`, and the thin Kotlin Android shell crosses JNI via JSON payloads
 //! and primitive values without holding panicking Rust state.
 
-use chrono::Utc;
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
+use chrono::{DateTime, Utc};
 use jni::objects::{JClass, JString};
-use jni::sys::{jboolean, jfloat, jlong, jstring, JNI_FALSE, JNI_TRUE};
+use jni::sys::{jboolean, jfloat, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 use serde::Serialize;
 
@@ -19,15 +21,16 @@ use streak_saver_core::automation::{
 };
 use streak_saver_core::messages::MessageDeck;
 use streak_saver_core::models::{AppSettings, ChatPriority, FriendConfig, StreakRunResult};
+use streak_saver_core::run::RunSession;
 use streak_saver_core::scheduler::{
-    compute_next_run, evaluate_battery_low_anticipation, evaluate_retry_schedule,
-    record_clean_run_success,
+    compute_next_run, compute_next_run_with_offset, evaluate_battery_low_anticipation,
+    evaluate_retry_schedule, record_clean_run_success,
 };
 use streak_saver_core::session::{
     guard_login_navigation, has_valid_session_cookie, resolve_user_agent,
 };
 use streak_saver_core::storage::{summarize_history, AppStorage};
-use streak_saver_core::updater::check_latest_release_json;
+use streak_saver_core::updater::{check_latest_release_json, GITHUB_LATEST_RELEASE_URL};
 
 #[derive(Serialize)]
 struct JniResponse<T: Serialize> {
@@ -446,4 +449,465 @@ pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_normalizeChatPri
         .map(|s| ChatPriority::from_setting(&s).as_str().to_string())
         .unwrap_or_else(|_| ChatPriority::Mixed.as_str().to_string());
     to_jstring(&mut env, &val)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Helpers for the exports below
+// ---------------------------------------------------------------------------------------------
+
+fn to_jbool(ok: bool) -> jboolean {
+    if ok {
+        JNI_TRUE
+    } else {
+        JNI_FALSE
+    }
+}
+
+fn open_storage(env: &mut JNIEnv<'_>, dir: JString<'_>) -> Result<AppStorage, String> {
+    let path = read_jstring(env, dir)?;
+    AppStorage::new(path).map_err(|e| e.to_string())
+}
+
+fn respond<T: Serialize>(env: &mut JNIEnv<'_>, res: Result<T, String>) -> jstring {
+    match res {
+        Ok(value) => json_ok(env, value),
+        Err(e) => json_err(env, e),
+    }
+}
+
+fn core_err(e: impl ToString) -> String {
+    e.to_string()
+}
+
+/// The run in progress, if any. Only one run exists at a time (the Kotlin service enforces it).
+static RUN_SESSION: Mutex<Option<RunSession>> = Mutex::new(None);
+
+fn lock_run() -> MutexGuard<'static, Option<RunSession>> {
+    // A panic elsewhere must not wedge every later run, so a poisoned lock is simply reused.
+    RUN_SESSION.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Time and release helpers
+// ---------------------------------------------------------------------------------------------
+
+/// `RustCore.isoToEpochMs(iso: String): Long`, or -1 when the text is not an RFC 3339 timestamp.
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_isoToEpochMs(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    iso: JString<'_>,
+) -> jlong {
+    read_jstring(&mut env, iso)
+        .ok()
+        .and_then(|s| DateTime::parse_from_rfc3339(s.trim()).ok())
+        .map(|d| d.timestamp_millis())
+        .unwrap_or(-1)
+}
+
+/// `RustCore.latestReleaseUrl(): String`
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_latestReleaseUrl(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    to_jstring(&mut env, GITHUB_LATEST_RELEASE_URL)
+}
+
+/// `RustCore.computeNextRunLocalJson(storageDir: String, utcOffsetMinutes: Int): String`
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_computeNextRunLocalJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    utc_offset_minutes: jint,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let settings = storage.load_settings().map_err(core_err)?;
+        compute_next_run_with_offset(&settings, Utc::now(), utc_offset_minutes).map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.setNextRunEpochMs(storageDir: String, epochMs: Long): Boolean`
+/// Stores when the next automatic run is armed. A value of zero or less clears it.
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_setNextRunEpochMs(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    epoch_ms: jlong,
+) -> jboolean {
+    let ok = (|| -> Result<(), String> {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let mut settings = storage.load_settings().map_err(core_err)?;
+        settings.next_run_utc = if epoch_ms > 0 {
+            DateTime::from_timestamp_millis(epoch_ms)
+        } else {
+            None
+        };
+        storage.save_settings(&settings).map_err(core_err)
+    })()
+    .is_ok();
+    to_jbool(ok)
+}
+
+/// `RustCore.getNextRunEpochMs(storageDir: String): Long`, or -1 when no run is armed.
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_getNextRunEpochMs(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jlong {
+    (|| -> Result<jlong, String> {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let settings = storage.load_settings().map_err(core_err)?;
+        Ok(settings
+            .next_run_utc
+            .map(|t| t.timestamp_millis())
+            .unwrap_or(-1))
+    })()
+    .unwrap_or(-1)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Dashboard and history
+// ---------------------------------------------------------------------------------------------
+
+/// `RustCore.loadDashboardJson(storageDir: String, utcOffsetMinutes: Int): String`
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_loadDashboardJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    utc_offset_minutes: jint,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage
+            .compute_dashboard(Utc::now(), utc_offset_minutes)
+            .map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.loadHistoryJson(storageDir: String): String` (JSON list of runs, newest first)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_loadHistoryJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage.load_history().map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.clearHistory(storageDir: String): Boolean`
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_clearHistory(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jboolean {
+    let ok = (|| -> Result<(), String> {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage.clear_history().map_err(core_err)
+    })()
+    .is_ok();
+    to_jbool(ok)
+}
+
+/// `RustCore.exportHistoryLog(storageDir: String): String` (JSON string with the log text)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_exportHistoryLog(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage.export_history_log().map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.recordSkippedRun(storageDir: String, reason: String): Boolean`
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_recordSkippedRun(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    reason: JString<'_>,
+) -> jboolean {
+    let ok = (|| -> Result<(), String> {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let text = read_jstring(&mut env, reason)?;
+        storage
+            .record_skipped_run(&text, Utc::now())
+            .map_err(core_err)
+    })()
+    .is_ok();
+    to_jbool(ok)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Friends and groups
+// ---------------------------------------------------------------------------------------------
+
+/// `RustCore.exportFriendsJson(storageDir: String): String` (JSON string with the file text)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_exportFriendsJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage.export_friends_json().map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.importFriendsJson(storageDir: String, raw: String): String` (JSON `ImportReport`)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_importFriendsJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    raw: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let text = read_jstring(&mut env, raw)?;
+        storage
+            .import_friends_json(&text, Utc::now())
+            .map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.clearFriends(storageDir: String): Boolean`
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_clearFriends(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jboolean {
+    let ok = (|| -> Result<(), String> {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage.clear_friends().map_err(core_err)
+    })()
+    .is_ok();
+    to_jbool(ok)
+}
+
+/// `RustCore.addTargetJson(storageDir, name, displayName, isGroup): String` (JSON `FriendConfig`)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_addTargetJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    name: JString<'_>,
+    display_name: JString<'_>,
+    is_group: jboolean,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let name = read_jstring(&mut env, name)?;
+        let display = read_jstring(&mut env, display_name)?;
+        storage
+            .add_target(&name, &display, is_group == JNI_TRUE, Utc::now())
+            .map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.updateTargetJson(storageDir, id, name, displayName): String` (JSON `FriendConfig`)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_updateTargetJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    id: JString<'_>,
+    name: JString<'_>,
+    display_name: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let id = read_jstring(&mut env, id)?;
+        let name = read_jstring(&mut env, name)?;
+        let display = read_jstring(&mut env, display_name)?;
+        storage
+            .update_target(&id, &name, &display)
+            .map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.deleteTargetJson(storageDir, id): String` (`{"ok":true,"data":true}` on success)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_deleteTargetJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    id: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let id = read_jstring(&mut env, id)?;
+        storage.delete_target(&id).map_err(core_err)?;
+        Ok(true)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.setTargetEnabledJson(storageDir, id, enabled): String`
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_setTargetEnabledJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    id: JString<'_>,
+    enabled: jboolean,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let id = read_jstring(&mut env, id)?;
+        storage
+            .set_target_enabled(&id, enabled == JNI_TRUE)
+            .map_err(core_err)?;
+        Ok(true)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.setAllEnabledJson(storageDir, isGroup, enabled): String` (data: number changed)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_setAllEnabledJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    is_group: jboolean,
+    enabled: jboolean,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage
+            .set_enabled_for_kind(is_group == JNI_TRUE, enabled == JNI_TRUE)
+            .map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+// ---------------------------------------------------------------------------------------------
+// TikTok session
+// ---------------------------------------------------------------------------------------------
+
+/// `RustCore.loadSessionJson(storageDir: String): String` (JSON `SessionState`)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_loadSessionJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage.load_session().map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.updateSessionJson(storageDir, valid, displayName): Boolean`
+/// Records the result of a session check. An empty `displayName` keeps the stored name.
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_updateSessionJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    valid: jboolean,
+    display_name: JString<'_>,
+) -> jboolean {
+    let ok = (|| -> Result<(), String> {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let name = read_jstring(&mut env, display_name)?;
+        let mut session = storage.load_session().map_err(core_err)?;
+        session.session_valid = valid == JNI_TRUE;
+        session.session_last_check = Some(Utc::now());
+        if !name.trim().is_empty() {
+            session.session_display_name = name.trim().to_string();
+        }
+        storage.save_session(&session).map_err(core_err)
+    })()
+    .is_ok();
+    to_jbool(ok)
+}
+
+// ---------------------------------------------------------------------------------------------
+// A run in progress
+// ---------------------------------------------------------------------------------------------
+
+/// `RustCore.runStartJson(storageDir: String, targetedIdsCsv: String): String`
+/// Starts a run and returns the first `AutomationAction` (`inject_script` or `complete`).
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_runStartJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    targeted_ids_csv: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let csv = read_jstring(&mut env, targeted_ids_csv)?;
+        let ids: Vec<String> = csv
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToString::to_string)
+            .collect();
+        let (session, first) = RunSession::start(storage, &ids, Utc::now()).map_err(core_err)?;
+        *lock_run() = Some(session);
+        Ok(first)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.runCallbackJson(user: String, success: Boolean, error: String): String`
+/// Reports the result of the last injected script and returns the next `AutomationAction`.
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_runCallbackJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    user: JString<'_>,
+    success: jboolean,
+    error: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let user = read_jstring(&mut env, user)?;
+        let error = read_jstring(&mut env, error)?;
+        let mut guard = lock_run();
+        let run = guard
+            .as_mut()
+            .ok_or_else(|| "No run in progress".to_string())?;
+        Ok(run.callback(&user, success == JNI_TRUE, &error, Utc::now()))
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.runFinishJson(): String` (JSON `RunSummary`)
+/// Ends the run, writes friend counters and the history entry.
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_runFinishJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    let taken = lock_run().take();
+    let res = match taken {
+        Some(run) => run.finish(Utc::now()).map_err(core_err),
+        None => Err("No run in progress".to_string()),
+    };
+    respond(&mut env, res)
 }

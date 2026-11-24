@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Default custom streak message matching `Jon2G/TiktokStreakSaver` v2.2.0.
@@ -117,6 +117,16 @@ impl FriendConfig {
             .map(|ts| ts.date_naive() == date)
             .unwrap_or(false)
     }
+
+    /// Returns whether a message was sent to this friend within the last `hours` hours.
+    ///
+    /// A timestamp in the future (clock change) counts as "not recent" so a wrong clock can
+    /// never block sending forever.
+    pub fn was_sent_within(&self, now: DateTime<Utc>, hours: i64) -> bool {
+        self.last_message_sent
+            .map(|ts| ts <= now && now - ts < Duration::hours(hours))
+            .unwrap_or(false)
+    }
 }
 
 /// Normalizes a TikTok username (strips leading `@` and trims) or group name (trims).
@@ -206,8 +216,51 @@ pub struct HistoryStats {
     pub last_run_time: Option<DateTime<Utc>>,
 }
 
-/// Persistent user settings matching `SettingsService` keys in v2.2.0.
+/// Result of importing a friends JSON file.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportReport {
+    pub added: usize,
+    pub skipped_duplicates: usize,
+    pub skipped_invalid: usize,
+}
+
+/// Summary of a finished (or stopped) streak run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunSummary {
+    pub sent: usize,
+    pub failed: usize,
+    pub total: usize,
+    pub had_errors: bool,
+    /// Number of chats switched off during this run after repeated "not found" failures.
+    pub auto_disabled: usize,
+    /// `false` when nothing was attempted, in which case no history entry is written.
+    pub recorded: bool,
+    pub summary: String,
+    /// Set when friend counters could not be written to disk during the run.
+    pub warning: Option<String>,
+}
+
+/// Numbers shown on the Home screen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DashboardState {
+    pub total_targets: usize,
+    pub enabled_targets: usize,
+    pub friends_total: usize,
+    pub groups_total: usize,
+    /// Enabled chats that received a message on the user's local calendar day.
+    pub sent_today: usize,
+    pub remaining_today: usize,
+    /// Success rate over today's runs, `None` when no message was attempted today.
+    pub success_rate_today_pct: Option<f64>,
+    pub last_run_time: Option<DateTime<Utc>>,
+    pub message_text: String,
+}
+
+/// Persistent user settings matching `SettingsService` keys in v2.2.0.
+///
+/// `#[serde(default)]` keeps older `settings.json` files loadable when new fields are added.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AppSettings {
     pub message_text: String,
     pub randomize_normal_messages: bool,
@@ -226,6 +279,24 @@ pub struct AppSettings {
     pub last_run_failure_reason: Option<String>,
     pub battery_anticipation_date: Option<NaiveDate>,
     pub send_on_battery_low: bool,
+    /// When the next automatic run is armed in the system alarm clock, if any.
+    pub next_run_utc: Option<DateTime<Utc>>,
+}
+
+impl AppSettings {
+    /// Window in hours during which a chat that already got a message is skipped.
+    ///
+    /// The upstream rule "skip anyone messaged today" breaks with the default 23 hour interval:
+    /// a run shortly after midnight is followed by a run before the next midnight, which would
+    /// skip everyone and let the streak lapse. A window just under the run interval keeps the
+    /// intended protection (no double sends on retries) without that gap.
+    pub fn skip_window_hours(&self) -> i64 {
+        if self.use_fixed_time {
+            20
+        } else {
+            i64::from(self.interval_hours).saturating_sub(1).max(1)
+        }
+    }
 }
 
 impl Default for AppSettings {
@@ -248,12 +319,14 @@ impl Default for AppSettings {
             last_run_failure_reason: None,
             battery_anticipation_date: None,
             send_on_battery_low: false,
+            next_run_utc: None,
         }
     }
 }
 
 /// Persistent TikTok WebView session metadata matching `SessionService` in v2.2.0.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SessionState {
     pub session_valid: bool,
     pub session_last_check: Option<DateTime<Utc>>,

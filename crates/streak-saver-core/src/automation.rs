@@ -112,6 +112,33 @@ pub fn build_run_plan(
     now: DateTime<Utc>,
 ) -> RunPlan {
     let today = now.date_naive();
+    build_run_plan_with(friends, targeted_ids, priority, |f| {
+        f.was_sent_on_date(today)
+    })
+}
+
+/// Like [`build_run_plan`], but a chat is skipped when it received a message within the last
+/// `skip_window_hours` hours instead of "on the same UTC calendar day".
+///
+/// This is what the Android service uses; see `AppSettings::skip_window_hours` for why.
+pub fn build_run_plan_windowed(
+    friends: &[FriendConfig],
+    targeted_ids: Option<&[String]>,
+    priority: ChatPriority,
+    now: DateTime<Utc>,
+    skip_window_hours: i64,
+) -> RunPlan {
+    build_run_plan_with(friends, targeted_ids, priority, |f| {
+        f.was_sent_within(now, skip_window_hours)
+    })
+}
+
+fn build_run_plan_with(
+    friends: &[FriendConfig],
+    targeted_ids: Option<&[String]>,
+    priority: ChatPriority,
+    already_sent: impl Fn(&FriendConfig) -> bool,
+) -> RunPlan {
     let is_targeted_retry = targeted_ids.map(|ids| !ids.is_empty()).unwrap_or(false);
     let target_set: HashSet<&str> = targeted_ids
         .unwrap_or(&[])
@@ -132,7 +159,7 @@ pub fn build_run_plan(
             }
             continue;
         }
-        if friend.was_sent_on_date(today) {
+        if already_sent(friend) {
             skipped_already_sent += 1;
             continue;
         }
@@ -212,6 +239,11 @@ impl RunStateMachine {
     pub fn with_seeded_deck(mut self, seed: u64) -> Self {
         self.deck = MessageDeck::from_builtin_seeded(seed);
         self
+    }
+
+    /// IDs of chats switched off so far in this run (three "not found" failures in a row).
+    pub fn auto_disabled_ids(&self) -> &[String] {
+        &self.auto_disabled_ids
     }
 
     /// Emits the next action for the current cursor position.
@@ -411,6 +443,41 @@ mod tests {
         let plan_g = build_run_plan(&friends, None, ChatPriority::GroupsFirst, ts(10));
         let ids_g: Vec<&str> = plan_g.targets.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(ids_g, vec!["g1", "g2", "f1", "f2"]);
+    }
+
+    #[test]
+    fn windowed_plan_skips_recent_sends_but_not_old_ones() {
+        let now = ts(10);
+        let mut recent = FriendConfig::new_friend("f1", "recent", "Recent");
+        recent.last_message_sent = Some(now - chrono::Duration::hours(2));
+        let mut old = FriendConfig::new_friend("f2", "old", "Old");
+        old.last_message_sent = Some(now - chrono::Duration::hours(23));
+        let never = FriendConfig::new_friend("f3", "never", "Never");
+        let friends = vec![recent, old, never];
+
+        let plan = build_run_plan_windowed(&friends, None, ChatPriority::Mixed, now, 22);
+        let ids: Vec<&str> = plan.targets.iter().map(|f| f.id.as_str()).collect();
+        assert_eq!(ids, vec!["f2", "f3"]);
+        assert_eq!(plan.skipped_already_sent, 1);
+    }
+
+    #[test]
+    fn windowed_plan_does_not_skip_everyone_after_a_midnight_run() {
+        // Sent at 00:30 UTC, next run 23 hours later on the same calendar day.
+        let sent = Utc
+            .with_ymd_and_hms(2026, 11, 21, 0, 30, 0)
+            .single()
+            .unwrap_or_else(Utc::now);
+        let now = sent + chrono::Duration::hours(23);
+        let mut friend = FriendConfig::new_friend("f1", "alice", "Alice");
+        friend.last_message_sent = Some(sent);
+        let friends = vec![friend];
+
+        // The day-based rule skips this friend, which is the bug the window avoids.
+        let by_day = build_run_plan(&friends, None, ChatPriority::Mixed, now);
+        assert!(by_day.targets.is_empty());
+        let by_window = build_run_plan_windowed(&friends, None, ChatPriority::Mixed, now, 22);
+        assert_eq!(by_window.targets.len(), 1);
     }
 
     #[test]

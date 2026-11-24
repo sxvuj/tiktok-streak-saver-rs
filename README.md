@@ -23,6 +23,10 @@ This project is derived from [Jon2G/TiktokStreakSaver](https://github.com/Jon2G/
 3. Allow installs from your browser or file manager when Android asks.
 4. Open the APK to install it.
 
+If Google Play Protect warns about the app, see [Play Protect](#play-protect) below.
+
+**Updates:** the app checks this repository's latest release on Home and in Profile ("Check for updates"). When a newer release exists it shows a banner with a button that opens the release page, where you download the new APK and install it over the old one. Updates install over the existing app only when both APKs were signed with the same key, which is why every release is signed with one permanent key.
+
 **Requirements:** Android 7.0 (API 24) or newer. The APK contains native libraries for `arm64-v8a`, `armeabi-v7a` and `x86_64`.
 
 The app id is `com.sxvuj.streaksaver`, which differs from the original app. Both can be installed on the same phone, and installing one never replaces the other.
@@ -35,32 +39,39 @@ The app id is `com.sxvuj.streaksaver`, which differs from the original app. Both
 - **Low battery:** an optional early run when the battery gets low, at most once per day.
 - **Cookie session:** you sign in to TikTok once in an in-app WebView. The session and user agent are reused for background runs.
 - **Foreground service:** a headless WebView opens TikTok messages, finds each enabled chat and sends the message. A notification shows progress.
-- **Messages:** your own text, or a built-in pool of 49 short streak phrases that is reshuffled when exhausted.
+- **Messages:** your own text, or a built-in pool of 49 short streak phrases that is reshuffled when exhausted. With random messages on, your own text is not used.
 - **Chat order:** mixed, friends first or groups first.
 - **Safety nets:** bounded retries per friend, and a friend that cannot be found is disabled after three failed runs in a row.
 - **Local storage:** settings, friends and run history are saved as JSON files in the app's private storage, written atomically. History is capped at 50 runs.
 
-## Current status
+## The app
 
-This is the first release (1.0.0). The Rust core is complete and covered by tests, but the Android screens are intentionally minimal:
+Four tabs, built with Material 3 (light and dark):
 
-- The **Dashboard** shows the next scheduled run and has **TikTok Login** and **Run Now** buttons.
-- The **Friends**, **History** and **Profile** tabs show the stored data as raw JSON. Editing friends and settings from inside the app is not built yet.
-- Friends and settings can currently be prepared with the bundled CLI (see below).
+- **Home:** how many chats were messaged today, a Run now / Stop button with live progress, the real next scheduled run, the last run, the message (your own text, or a Random messages switch with an example phrase), and an update banner. Pull down to refresh.
+- **Chats:** your friends and groups in two tabs, with search, a per-chat switch, add, edit and delete, Turn all on / off, and totals. The menu imports and exports the list as JSON.
+- **History:** a success ring, run log with failures per chat, "Retry failed", Export log and Clear. Runs that were skipped (offline, logged out) are listed too, with the reason.
+- **Profile:** TikTok session (log in, verify, log out), background automation, interval or fixed local time, random messages, chat order, low-battery run, and shortcuts to the battery, exact alarm and notification settings.
 
-Contributions to the Android UI are very welcome.
+### Moving your friends list from the original app
+
+Export the list in the original Streak Saver, then in this app open **Chats > menu > Import list** and pick the file. The importer is tolerant (different key casing, wrapped lists, dates with or without a zone) and reports how many chats were added, how many were already there and how many could not be read. It has not been tested against a real export from the original app yet, so please open an issue with a sample (remove usernames first) if a file is rejected. You can also add chats by hand.
 
 ## How it works
 
 ```
-Alarm fires
+Alarm fires (or you tap Run now)
    -> AlarmReceiver starts StreakService (foreground)
-   -> network check (offline: skip and retry in 1 hour)
+   -> checks network and the TikTok session (problems are logged in History)
+   -> RustCore RunSession plans the run: enabled chats, skipping anyone messaged recently
    -> headless WebView loads tiktok.com/messages
-   -> RustCore builds the run plan and renders the automation script
-   -> for each enabled friend: open chat, send message
-   -> record results, schedule the next alarm, stop the service
+   -> for each chat: inject script, report the result back to RunSession
+      (retries, counters and the three-strikes rule are handled in Rust)
+   -> RunSession writes the history entry
+   -> next alarm is always armed (interval, fixed time, or a 1 hour retry after errors)
 ```
+
+"Messaged recently" means within the skip window: 20 hours for a fixed daily time, otherwise the interval minus one hour. It is measured in elapsed hours, not calendar days, so a 23 hour interval never skips a whole run by accident.
 
 ## Project layout
 
@@ -69,7 +80,7 @@ Alarm fires
 | `crates/streak-saver-core` | Pure Rust engine: models, message pool, scheduler, session rules, automation scripts, storage, update check. No `unsafe`, no `unwrap` in production code. |
 | `crates/streak-saver-jni` | Android JNI `cdylib` (`libstreak_saver_jni.so`), linked with 16 KB page alignment for Android 15 and 16. |
 | `crates/streak-saver-cli` | Desktop CLI: add friends, list friends, show the next run, simulate a run, show stats, replay parity cases. |
-| `android/` | Kotlin and Compose app (`MainActivity`, `LoginWebViewActivity`, `StreakService`, receivers) that calls the core through `RustCore`. |
+| `android/` | Kotlin and Compose app: `ui/` (screens, `AppModel`), `data/` (`StreakRepo`, models), `service/` (`StreakService`, `Scheduler`, notifications), `receiver/`. Everything goes through `RustCore`. |
 | `rust-anything/` | Migration plan and recorded behavior cases used to check parity with the original app. |
 | `.github/workflows/android-release.yml` | CI: Rust checks, native build, signed Release APK, GitHub Release. |
 
@@ -129,21 +140,12 @@ Releases are built by GitHub Actions, not by hand.
 **One-time setup: release signing key.** A stable key is what lets users update the app without uninstalling it.
 
 ```bash
-keytool -genkeypair -v -keystore release.jks -storetype PKCS12 \
-  -alias streaksaver -keyalg RSA -keysize 4096 -validity 36500
-base64 -w0 release.jks
+./scripts/make-keystore.sh
 ```
 
-Keep `release.jks` private and backed up. In the repository go to **Settings > Secrets and variables > Actions** and add:
+The script creates `streaksaver-release.jks` and prints the exact `gh secret set` commands for the four secrets below (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`). Keep the keystore and password backed up and private; `.jks` files are git-ignored. You can also add the secrets by hand under **Settings > Secrets and variables > Actions**.
 
-| Secret | Value |
-|--------|-------|
-| `KEYSTORE_BASE64` | output of the `base64` command above |
-| `KEYSTORE_PASSWORD` | the keystore password |
-| `KEY_ALIAS` | `streaksaver` |
-| `KEY_PASSWORD` | the same password (PKCS12 uses one password for both) |
-
-If these secrets are missing, the workflow still produces an installable APK but signs it with a throwaway key, and prints a warning. Such an APK cannot update an install that was signed with a different key.
+**Tag builds refuse to run without these secrets.** Branch and pull request builds fall back to a throwaway key so they still produce a test APK, but that APK cannot update an install signed with a different key, so never hand it out as a release.
 
 **Publishing a version:**
 
@@ -165,9 +167,13 @@ The workflow checks that the tag matches the app version, builds and verifies th
 | Language | C# on .NET MAUI | Rust core with a Kotlin and Compose Android shell |
 | App id | `com.jon2g.tiktokstreaksaver` | `com.sxvuj.streaksaver` |
 | App name | Streak Saver | Streak Saver RS |
-| Version | 2.2.0 | starts at 1.0.0 |
+| Version | 2.2.0 | starts at 1.0.0 (now 1.1.1) |
 | Platforms | Android, experimental iOS | Android |
 | Update source | Jon2G releases | this repository's releases |
+
+## Play Protect
+
+Version 1.0.0 was blocked by Google Play Protect on at least one phone ("Harmful app blocked"). The exact reason is not known, because Play Protect does not say. 1.1.0 removes things that make a sideloaded app look riskier than it needs to be: the permission to install other packages, the battery-optimization exemption permission and the file provider are gone. Release builds are now always signed with one permanent key. The app still uses a foreground service, exact alarms and a WebView with JavaScript, because the job needs them, so a warning on a new, unknown APK can still happen. If it does, the options are "Install anyway" on the warning dialog, or turning off scanning for this install. Please report it with your Android version if it keeps happening.
 
 ## Disclaimer
 

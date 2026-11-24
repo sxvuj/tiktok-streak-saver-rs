@@ -100,7 +100,7 @@ mod tests {
         let json = r#"{
             "tag_name": "v2.3.0",
             "body": "Bug fixes",
-            "html_url": "https://github.com/sxvuj/tiktok-streak-saver-rs/releases/tag/v1.1.0",
+            "html_url": "https://github.com/sxvuj/tiktok-streak-saver-rs/releases/tag/v1.1.1",
             "assets": [
                 {"name": "StreakSaver.ipa", "browser_download_url": "https://example.com/app.ipa"},
                 {"name": "StreakSaver-v2.3.0.apk", "browser_download_url": "https://example.com/StreakSaver-v2.3.0.apk"}

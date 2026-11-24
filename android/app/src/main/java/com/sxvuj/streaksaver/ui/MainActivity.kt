@@ -1,149 +1,160 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.sxvuj.streaksaver.ui
 
+import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
-import com.sxvuj.streaksaver.rust.RustCore
-import com.sxvuj.streaksaver.service.StreakService
+import com.sxvuj.streaksaver.ui.theme.StreakTheme
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
+    private val model: AppModel by viewModels()
+
+    private val loginLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        model.onLoginResult(result.resultCode == RESULT_OK)
+    }
+
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        model.refresh()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val storageDir = filesDir.absolutePath
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         setContent {
-            MaterialTheme {
-                StreakSaverApp(
-                    storageDir = storageDir,
-                    onOpenLogin = {
-                        startActivity(Intent(this, LoginWebViewActivity::class.java))
-                    },
-                    onRunNow = {
-                        ContextCompat.startForegroundService(
-                            this,
-                            Intent(this, StreakService::class.java)
-                        )
-                    }
+            StreakTheme {
+                AppRoot(
+                    model = model,
+                    onLogin = { loginLauncher.launch(Intent(this, LoginWebViewActivity::class.java)) },
+                    onOpenUrl = { openUrl(this, it) },
                 )
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        model.refresh()
+    }
 }
 
+private class NavTab(val title: String, val icon: ImageVector)
+
+private val TABS = listOf(
+    NavTab("Home", Icons.Filled.Home),
+    NavTab("Chats", Icons.Filled.Person),
+    NavTab("History", Icons.Filled.DateRange),
+    NavTab("Profile", Icons.Filled.AccountCircle),
+)
+
 @Composable
-private fun StreakSaverApp(
-    storageDir: String,
-    onOpenLogin: () -> Unit,
-    onRunNow: () -> Unit
-) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Dashboard", "Friends", "History", "Profile")
+private fun AppRoot(model: AppModel, onLogin: () -> Unit, onOpenUrl: (String) -> Unit) {
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val snackbar = remember { SnackbarHostState() }
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(30_000L)
+            value = System.currentTimeMillis()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        model.messages.collect { text ->
+            snackbar.currentSnackbarData?.dismiss()
+            snackbar.showSnackbar(text)
+        }
+    }
+    BackHandler(enabled = tab != 0) { tab = 0 }
 
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (tab == 0) "Streak Saver" else TABS[tab].title, fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
         bottomBar = {
             NavigationBar {
-                tabs.forEachIndexed { idx, label ->
+                TABS.forEachIndexed { index, item ->
                     NavigationBarItem(
-                        selected = selectedTab == idx,
-                        onClick = { selectedTab = idx },
-                        icon = { Text(label.take(1)) },
-                        label = { Text(label) }
+                        selected = tab == index,
+                        onClick = { tab = index },
+                        icon = { Icon(item.icon, contentDescription = null) },
+                        label = { Text(item.title) },
                     )
                 }
             }
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-        ) {
-            when (selectedTab) {
-                0 -> DashboardTab(storageDir, onOpenLogin, onRunNow)
-                1 -> FriendsTab(storageDir)
-                2 -> HistoryTab(storageDir)
-                else -> ProfileTab(storageDir)
-            }
+        // On Android 15 the window no longer resizes for the keyboard, so every tab has to make room
+        // for it itself. consumeWindowInsets stops the bottom bar height from being counted twice.
+        val content = Modifier
+            .padding(padding)
+            .consumeWindowInsets(padding)
+            .imePadding()
+        when (tab) {
+            0 -> HomeScreen(model, now, onLogin, onOpenUrl, content)
+            1 -> FriendsScreen(model, now, content)
+            2 -> HistoryScreen(model, now, content)
+            else -> ProfileScreen(model, now, onLogin, onOpenUrl, content)
         }
     }
 }
 
-@Composable
-private fun DashboardTab(
-    storageDir: String,
-    onOpenLogin: () -> Unit,
-    onRunNow: () -> Unit
-) {
-    val nextRunJson = remember(storageDir) { RustCore.computeNextRunJson(storageDir) }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Streak Saver RS", style = MaterialTheme.typography.headlineSmall)
-        Text("Next run: $nextRunJson", style = MaterialTheme.typography.bodyMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onOpenLogin) { Text("TikTok Login") }
-            Button(onClick = onRunNow) { Text("Run Now") }
-        }
-    }
-}
-
-@Composable
-private fun FriendsTab(storageDir: String) {
-    var friendsJson by remember { mutableStateOf(RustCore.loadFriendsJson(storageDir)) }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Friends & Groups", style = MaterialTheme.typography.headlineSmall)
-        OutlinedTextField(
-            value = friendsJson,
-            onValueChange = { friendsJson = it },
-            modifier = Modifier.fillMaxWidth().height(240.dp),
-            label = { Text("RustCore Friends JSON") }
-        )
-        Button(onClick = { friendsJson = RustCore.loadFriendsJson(storageDir) }) {
-            Text("Refresh")
-        }
-    }
-}
-
-@Composable
-private fun HistoryTab(storageDir: String) {
-    val stats = remember(storageDir) { RustCore.loadHistoryStatsJson(storageDir) }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Run History & Stats", style = MaterialTheme.typography.headlineSmall)
-        Text(stats, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable
-private fun ProfileTab(storageDir: String) {
-    val settings = remember(storageDir) { RustCore.loadSettingsJson(storageDir) }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Profile & Automation Settings", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(4.dp))
-        Text(settings, style = MaterialTheme.typography.bodySmall)
+private fun openUrl(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (e: Exception) {
+        // No browser installed.
     }
 }

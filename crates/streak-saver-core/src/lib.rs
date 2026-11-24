@@ -12,6 +12,7 @@ pub mod automation;
 pub mod error;
 pub mod messages;
 pub mod models;
+pub mod run;
 pub mod scheduler;
 pub mod session;
 pub mod storage;
@@ -24,12 +25,13 @@ pub use automation::{
 pub use error::{Result, StreakError};
 pub use messages::{MessageDeck, RANDOMIZED_STREAK_MESSAGES};
 pub use models::{
-    AppSettings, ChatPriority, FriendConfig, FriendMessageResult, HistoryStats, SessionState,
-    StreakRunResult, UpdateInfo,
+    AppSettings, ChatPriority, DashboardState, FriendConfig, FriendMessageResult, HistoryStats,
+    ImportReport, RunSummary, SessionState, StreakRunResult, UpdateInfo,
 };
+pub use run::RunSession;
 pub use scheduler::{
-    compute_next_run, evaluate_battery_low_anticipation, evaluate_retry_schedule, RetryDecision,
-    ScheduleDecision,
+    compute_next_run, compute_next_run_with_offset, evaluate_battery_low_anticipation,
+    evaluate_retry_schedule, RetryDecision, ScheduleDecision,
 };
 pub use session::{
     guard_login_navigation, has_valid_session_cookie, resolve_user_agent, LoginNavDecision,
