@@ -25,6 +25,8 @@ This project is a fork of [Jon2G/TiktokStreakSaver](https://github.com/Jon2G/Tik
 
 If Google Play Protect warns about the app, see [Play Protect](#play-protect) below.
 
+**Updates:** the app checks this repository's latest release on Home and in Profile ("Check for updates"). When a newer release exists it shows a banner with a button that opens the release page, where you download the new APK and install it over the old one. Updates install over the existing app only when both APKs were signed with the same key, which is why every release is signed with one permanent key.
+
 **Requirements:** Android 7.0 (API 24) or newer. The APK contains native libraries for `arm64-v8a`, `armeabi-v7a` and `x86_64`.
 
 The app id is `com.sxvuj.streaksaver`, which differs from the original app. Both can be installed on the same phone, and installing one never replaces the other.
@@ -37,7 +39,7 @@ The app id is `com.sxvuj.streaksaver`, which differs from the original app. Both
 - **Low battery:** an optional early run when the battery gets low, at most once per day.
 - **Cookie session:** you sign in to TikTok once in an in-app WebView. The session and user agent are reused for background runs.
 - **Foreground service:** a headless WebView opens TikTok messages, finds each enabled chat and sends the message. A notification shows progress.
-- **Messages:** your own text, or a built-in pool of 49 short streak phrases that is reshuffled when exhausted.
+- **Messages:** your own text, or a built-in pool of 49 short streak phrases that is reshuffled when exhausted. With random messages on, your own text is not used.
 - **Chat order:** mixed, friends first or groups first.
 - **Safety nets:** bounded retries per friend, and a friend that cannot be found is disabled after three failed runs in a row.
 - **Local storage:** settings, friends and run history are saved as JSON files in the app's private storage, written atomically. History is capped at 50 runs.
@@ -46,7 +48,7 @@ The app id is `com.sxvuj.streaksaver`, which differs from the original app. Both
 
 Four tabs, built with Material 3 (light and dark):
 
-- **Home:** how many chats were messaged today, a Run now / Stop button with live progress, the real next scheduled run, the last run, your message text, and an update banner. Pull down to refresh.
+- **Home:** how many chats were messaged today, a Run now / Stop button with live progress, the real next scheduled run, the last run, the message (your own text, or a Random messages switch with an example phrase), and an update banner. Pull down to refresh.
 - **Chats:** your friends and groups in two tabs, with search, a per-chat switch, add, edit and delete, Turn all on / off, and totals. The menu imports and exports the list as JSON.
 - **History:** a success ring, run log with failures per chat, "Retry failed", Export log and Clear. Runs that were skipped (offline, logged out) are listed too, with the reason.
 - **Profile:** TikTok session (log in, verify, log out), background automation, interval or fixed local time, random messages, chat order, low-battery run, and shortcuts to the battery, exact alarm and notification settings.
@@ -165,7 +167,7 @@ The workflow checks that the tag matches the app version, builds and verifies th
 | Language | C# on .NET MAUI | Rust core with a Kotlin and Compose Android shell |
 | App id | `com.jon2g.tiktokstreaksaver` | `com.sxvuj.streaksaver` |
 | App name | Streak Saver | Streak Saver RS |
-| Version | 2.2.0 | starts at 1.0.0 (now 1.1.0) |
+| Version | 2.2.0 | starts at 1.0.0 (now 1.1.1) |
 | Platforms | Android, experimental iOS | Android |
 | Update source | Jon2G releases | this repository's releases |
 

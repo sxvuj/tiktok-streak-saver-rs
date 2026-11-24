@@ -15,6 +15,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
@@ -134,7 +136,12 @@ private fun AppRoot(model: AppModel, onLogin: () -> Unit, onOpenUrl: (String) ->
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        val content = Modifier.padding(padding)
+        // On Android 15 the window no longer resizes for the keyboard, so every tab has to make room
+        // for it itself. consumeWindowInsets stops the bottom bar height from being counted twice.
+        val content = Modifier
+            .padding(padding)
+            .consumeWindowInsets(padding)
+            .imePadding()
         when (tab) {
             0 -> HomeScreen(model, now, onLogin, onOpenUrl, content)
             1 -> FriendsScreen(model, now, content)

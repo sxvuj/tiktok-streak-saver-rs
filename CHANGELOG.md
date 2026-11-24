@@ -3,6 +3,19 @@
 All notable changes to Streak Saver RS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] - 2026-11-24
+
+First version published on the GitHub Releases page, so the in-app update check now has something to find.
+
+### Fixed
+- The keyboard covered the Message field and the content under it. Android 15 no longer resizes the window for the keyboard, so every tab now makes room for it itself.
+- With random messages on, Home still showed an editable text box that was ignored. It now shows a switch and an example phrase (with "Show another") instead, and the box only appears when random messages are off.
+- A blank message was silently ignored while the box looked empty. The box now says so, and the last saved message keeps being used until you type a new one.
+- The update check reported a failure when the repository had no release yet. It now says you have the latest version, and failures name the reason (for example GitHub rate limiting).
+
+### Changed
+- Home has a Random messages switch next to the message, in addition to the one in Profile.
+
 ## [1.1.0] - 2026-11-23
 
 The app is now usable on its own: the placeholder screens are replaced and the background service records what it does.

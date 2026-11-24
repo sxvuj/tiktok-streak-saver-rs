@@ -640,7 +640,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "streak-saver-cli"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "chrono",
  "clap",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "streak-saver-core"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "chrono",
  "rand",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "streak-saver-jni"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "chrono",
  "jni",

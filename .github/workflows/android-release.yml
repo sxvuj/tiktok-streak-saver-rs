@@ -199,7 +199,7 @@ jobs:
           if-no-files-found: ignore
 
   publish-release:
-    # Only for version tags (v1.0.0, v1.1.0, ...): attaches the APK to the GitHub Releases page.
+    # Only for version tags (v1.0.0, v1.1.1, ...): attaches the APK to the GitHub Releases page.
     if: github.ref_type == 'tag'
     needs: android-apk
     runs-on: ubuntu-latest

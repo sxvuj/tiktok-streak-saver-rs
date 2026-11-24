@@ -401,7 +401,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 if (!silent) say(if (info.available) "Version ${info.latestVersion} is available" else "You have the latest version")
             }
             result.onFailure {
-                if (!silent) say("Could not check for updates")
+                if (!silent) say("Could not check for updates: ${it.message ?: "no connection"}")
             }
         }
     }

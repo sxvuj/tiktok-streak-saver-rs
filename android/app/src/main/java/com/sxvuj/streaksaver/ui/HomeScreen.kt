@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.sxvuj.streaksaver.rust.RustCore
 import kotlinx.coroutines.delay
 
 @Composable
@@ -210,28 +212,49 @@ fun HomeScreen(
             }
 
             SectionCard(title = "Message") {
-                var text by remember { mutableStateOf(ui.settings.messageText) }
-                LaunchedEffect(ui.loaded) { if (ui.loaded) text = ui.settings.messageText }
-                LaunchedEffect(text) {
-                    if (ui.loaded && text.isNotBlank() && text != ui.settings.messageText) {
-                        delay(600)
-                        model.saveMessage(text)
-                    }
-                }
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Message to send") },
-                    supportingText = {
-                        Text(
-                            if (ui.settings.randomize) "Random messages are on, so this text is not used."
-                            else "Saved automatically.",
-                        )
-                    },
-                    minLines = 2,
-                    maxLines = 5,
+                SwitchRow(
+                    title = "Random messages",
+                    subtitle = "Send a different built-in phrase to each chat instead of your own text.",
+                    checked = ui.settings.randomize,
+                    onCheckedChange = { model.setRandomize(it) },
                 )
+                if (ui.settings.randomize) {
+                    // Your own text is not used in this mode, so there is no field to type in.
+                    var sample by remember { mutableStateOf(RustCore.pickRandomMessage()) }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            "Example",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text("\"$sample\"", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    TextButton(onClick = { sample = RustCore.pickRandomMessage() }) { Text("Show another") }
+                } else {
+                    var text by remember { mutableStateOf(ui.settings.messageText) }
+                    LaunchedEffect(text) {
+                        // A blank message is never saved: the last saved text keeps being used.
+                        if (text.isNotBlank() && text != ui.settings.messageText) {
+                            delay(600)
+                            model.saveMessage(text)
+                        }
+                    }
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Message to send") },
+                        isError = text.isBlank(),
+                        supportingText = {
+                            Text(
+                                if (text.isBlank()) "Type a message. Until then the last saved one is sent."
+                                else "Saved automatically.",
+                            )
+                        },
+                        minLines = 2,
+                        maxLines = 5,
+                    )
+                }
             }
         }
     }
