@@ -22,7 +22,7 @@ A full redesign in the style of the Fitbit app, editable random messages, and si
 - The `USE_EXACT_ALARM` permission, which is meant for alarm and calendar apps. Exact alarms now need the user-granted `SCHEDULE_EXACT_ALARM` (Settings > Exact alarms). Without it, runs can start a few minutes late.
 
 ### Notes
-- Play Protect: the cause of the "Harmful app blocked" report on 1.0.0 is not known, and the signing key is probably not it (CI builds use the same key when the secrets are set). See the Play Protect section of the README for what is known, what the changes above do and do not guarantee, and how to appeal.
+- Play Protect: the cause of the "Harmful app blocked" report on 1.0.0 is not known. For v1.1.1 the only known difference between the build that installed fine and the one that was blocked is the signing certificate. See the Play Protect section of the README for what is known, what the changes above do and do not guarantee, and how to appeal.
 
 ## [1.1.1] - 2026-11-24
 
