@@ -3,8 +3,16 @@
 package com.sxvuj.streaksaver.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.sxvuj.streaksaver.data.MAX_MESSAGE_CHARS
 import com.sxvuj.streaksaver.data.MAX_RANDOM_MESSAGES
@@ -101,6 +110,8 @@ fun MessagesScreen(model: AppModel, onClose: () -> Unit, modifier: Modifier = Mo
     var bulkEditing by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
+    val entrance = rememberEntrance()
+    val keys = uniqueKeys(draft.toList()) { it }
 
     fun leave() {
         // The single message saves after a short pause; do not lose the last keystrokes.
@@ -139,8 +150,8 @@ fun MessagesScreen(model: AppModel, onClose: () -> Unit, modifier: Modifier = Mo
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            item(key = "title") {
+                Row(Modifier.entrance(0, entrance, key = "title"), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { back() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
@@ -148,17 +159,18 @@ fun MessagesScreen(model: AppModel, onClose: () -> Unit, modifier: Modifier = Mo
                 }
             }
 
-            item {
+            item(key = "mode") {
                 SegmentedPills(
                     options = listOf("Single message", "Random list"),
                     selected = if (settings.randomize) 1 else 0,
                     onSelect = { model.setRandomize(it == 1) },
+                    modifier = Modifier.entrance(1, entrance, key = "mode"),
                 )
             }
 
             if (!settings.randomize) {
-                item {
-                    SectionCard(title = "Your message") {
+                item(key = "single") {
+                    SectionCard(title = "Your message", modifier = Modifier.animateItem().entrance(2, entrance, key = "single")) {
                         Text(
                             "The same text goes to every chat on every run.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -182,17 +194,20 @@ fun MessagesScreen(model: AppModel, onClose: () -> Unit, modifier: Modifier = Mo
                         )
                     }
                 }
-                item {
+                item(key = "singleHint") {
                     Text(
                         "Want it to vary? Switch to Random list above. Your single message stays saved and is used if the list is ever empty.",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp),
+                        modifier = Modifier
+                            .animateItem()
+                            .entrance(3, entrance, key = "singleHint")
+                            .padding(horizontal = 8.dp),
                     )
                 }
             } else {
-                item {
-                    SectionCard {
+                item(key = "poolInfo") {
+                    SectionCard(Modifier.animateItem().entrance(2, entrance, key = "poolInfo")) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (saved.custom) {
                                 StatusPill("Your list", container = colors.primaryContainer, content = colors.onPrimaryContainer)
@@ -221,8 +236,8 @@ fun MessagesScreen(model: AppModel, onClose: () -> Unit, modifier: Modifier = Mo
                     }
                 }
 
-                item {
-                    SectionCard(title = "Add a message") {
+                item(key = "add") {
+                    SectionCard(title = "Add a message", modifier = Modifier.animateItem().entrance(3, entrance, key = "add")) {
                         OutlinedTextField(
                             value = newText,
                             onValueChange = {
@@ -254,8 +269,12 @@ fun MessagesScreen(model: AppModel, onClose: () -> Unit, modifier: Modifier = Mo
                 }
 
                 if (draft.isEmpty()) {
-                    item {
-                        SectionCard(containerColor = colors.tertiaryContainer, contentColor = colors.onTertiaryContainer) {
+                    item(key = "emptyPool") {
+                        SectionCard(
+                            modifier = Modifier.animateItem(),
+                            containerColor = colors.tertiaryContainer,
+                            contentColor = colors.onTertiaryContainer,
+                        ) {
                             Text("The list is empty", style = MaterialTheme.typography.titleLarge)
                             Text(
                                 "While it is empty, the single message \"${settings.messageText}\" is sent instead. Add a message above or tap Reset for the built-in ones.",
@@ -265,20 +284,34 @@ fun MessagesScreen(model: AppModel, onClose: () -> Unit, modifier: Modifier = Mo
                     }
                 }
 
-                itemsIndexed(draft) { index, message ->
+                // New messages drop in at the top and deleted ones fade out while the rest slide up.
+                itemsIndexed(draft, key = { index, _ -> keys.getOrElse(index) { "m$index" } }) { index, message ->
+                    val key = keys.getOrElse(index) { "m$index" }
                     MessageRow(
                         text = message,
                         onEdit = { editIndex = index },
                         onDelete = { if (index in draft.indices) draft.removeAt(index) },
+                        modifier = Modifier
+                            .animateItem(
+                                fadeInSpec = Motion.defaultEffects(),
+                                placementSpec = Motion.offsetSpec,
+                                fadeOutSpec = Motion.fastEffects(),
+                            )
+                            .entrance(index + 4, entrance, key = key),
                     )
                 }
             }
         }
 
-        if (poolDirty) {
+        // The unsaved-changes bar springs up from the bottom when the list is edited.
+        AnimatedVisibility(
+            visible = poolDirty,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = slideInVertically(Motion.fastSpatial(IntOffset.VisibilityThreshold)) { it } + fadeIn(),
+            exit = slideOutVertically(Motion.offsetSpec) { it } + fadeOut(),
+        ) {
             Row(
                 Modifier
-                    .align(Alignment.BottomCenter)
                     .padding(16.dp)
                     .fillMaxWidth()
                     .clip(MaterialTheme.shapes.extraLarge)
@@ -432,15 +465,17 @@ fun MessagesScreen(model: AppModel, onClose: () -> Unit, modifier: Modifier = Mo
 }
 
 @Composable
-private fun MessageRow(text: String, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun MessageRow(text: String, onEdit: () -> Unit, onDelete: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val tooLong = text.length > MAX_MESSAGE_CHARS
+    val source = remember { MutableInteractionSource() }
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
+            .pressScale(source, 0.97f)
             .clip(MaterialTheme.shapes.large)
             .background(colors.surfaceContainerLow)
-            .clickable(onClick = onEdit)
+            .clickable(interactionSource = source, indication = LocalIndication.current, onClick = onEdit)
             .padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

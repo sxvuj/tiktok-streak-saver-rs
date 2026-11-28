@@ -3,6 +3,35 @@
 All notable changes to Streak Saver RS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-28
+
+Rounded text, real motion, and a dynamic color (Material You) option.
+
+### Added
+- Settings > Appearance > Dynamic color: on Android 12 and newer the app takes its colors from your wallpaper (Material You / Monet), including the gauge, the group badges and the stat tiles. Off by default, which keeps the blue Fitbit palette. The setting is kept on the phone only. A row of palette swatches previews the current colors.
+- `scripts/make-fonts.py`, which rebuilds the bundled font files from the Google Sans Flex variable font.
+
+### Changed
+- Rounded text: the bundled Google Sans Flex instances are now cut with the font's roundness axis at its maximum (ROND 100), the soft terminals Google uses in Google Health and other recent Google apps. Same weights and file names as before.
+- Motion throughout, using spring animations tuned to the Material 3 Expressive motion scheme:
+  - Fade-through between the bottom bar tabs, and a horizontal slide into and out of the message editor; the bottom bar slides away while the editor is open.
+  - Cards and rows enter with a short stagger (fade, rise and grow) when a screen opens.
+  - Friends, groups, history runs and messages fade in and out and glide to their new places when they are added, removed, searched or switched between Friends and Groups.
+  - The segmented controls (Friends/Groups, Single/Random, chat order) have a sliding indicator.
+  - Numbers count up (today's gauge, stat tiles, success rate); short labels roll to their new value (interval hours, fixed time, "Stop" to "Stopping", status pills, the random message example).
+  - The gauge sweeps up from empty, follows changes on a soft spring, and bounces when it reaches 100%.
+  - Cards, buttons and the segmented control shrink slightly while pressed and spring back.
+  - The Add friend button collapses to an icon while you scroll the list.
+  - Nav icons switch from outlined to rounded with a small pop when selected.
+  - Expandable history runs open and close smoothly with a rotating arrow; Settings sub-options expand and collapse instead of popping.
+  - Switching dynamic color or light/dark glides every color to the new palette.
+- Slightly larger corner radii to match the rounded type.
+- Turned-off chats are dimmed in the Friends list.
+
+### Fixed
+- The built-in palette now defines its inverse colors, so the "Discard" button on the unsaved changes bar is blue instead of Material's default purple.
+- Ripples on settings rows and list cards are clipped to their rounded shape.
+
 ## [1.2.0] - 2026-11-28
 
 A full redesign in the style of the Fitbit app, editable random messages, and signing and permission clean-up after a Play Protect report.

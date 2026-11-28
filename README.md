@@ -47,14 +47,20 @@ The app id is `com.sxvuj.streaksaver`, which differs from the original app. Both
 
 ## The app
 
-Version 1.2.0 redesigns the app after the look of the Fitbit (Google Health) app: a blue neutral Material 3 palette with teal and amber accents, a thick 270 degree gauge, large rounded cards, pill buttons and a bottom bar with a blue pill indicator. All text is set in Google Sans Flex in heavy weights (Black and ExtraBold for headings, Bold for labels). Light and dark themes follow the system.
+Version 1.2.0 redesigned the app after the look of the Fitbit (Google Health) app: a blue neutral Material 3 palette with teal and amber accents, a thick 270 degree gauge, large rounded cards, pill buttons and a bottom bar with a blue pill indicator. Light and dark themes follow the system.
+
+Version 1.3.0 makes it softer and livelier:
+
+- **Rounded text.** All text is set in Google Sans Flex with its roundness axis (`ROND`) turned all the way up, the same soft rounded terminals Google uses in Google Health and other recent Google apps, in heavy weights (Black and ExtraBold for headings, Bold for labels). `scripts/make-fonts.py` rebuilds the font files.
+- **Motion.** Spring-based animations throughout, tuned to the Material 3 Expressive motion scheme: fade-through between tabs, a slide when the message editor opens, staggered entrance of cards, list rows that fade and glide when they are added, removed or filtered, a sliding segmented control, count-up numbers, a gauge that sweeps up and bounces at 100%, squishy press feedback on cards and buttons, a collapsing Add button, and nav icons that switch from outlined to rounded with a little pop.
+- **Dynamic color.** Settings > Appearance > Dynamic color takes the app's colors from your wallpaper (Material You / Monet) on Android 12 and newer. It is off by default, which keeps the blue Fitbit palette. Switching it glides every color to the new palette.
 
 Four tabs plus a message editor:
 
 - **Today:** a gauge of how many chats were messaged today, a Run now / Stop button with live progress, tiles for friends, groups and today's success rate, the real next scheduled run, the last run, and the message that will be sent with a shortcut to the editor. Pull down to refresh.
 - **Friends:** your friends and groups in two tabs, with search, a per-chat switch, add, edit and delete, Turn all on / off, and totals. The menu imports and exports the list as JSON.
 - **History:** an all-time success gauge, run log with failures per chat, "Retry failed", Export log and Clear. Runs that were skipped (offline, logged out) are listed too, with the reason.
-- **Settings:** TikTok session (log in, verify, log out), background automation, interval or fixed local time, messages, chat order, low-battery run, and shortcuts to the battery, exact alarm and notification settings.
+- **Settings:** TikTok session (log in, verify, log out), background automation, interval or fixed local time, messages, chat order, low-battery run, shortcuts to the battery, exact alarm and notification settings, and Appearance (dynamic color).
 - **Messages editor** (Settings > Edit messages, or Today > Edit messages): choose Single message or Random list. The single message saves as you type. List edits are a draft until you tap Save, so you can Discard them; messages are trimmed, limited to 280 characters, de-duplicated and capped at 200 when saved.
 
 ### Moving your friends list from the original app
@@ -171,7 +177,7 @@ The workflow checks that the tag matches the app version, builds and verifies th
 | Language | C# on .NET MAUI | Rust core with a Kotlin and Compose Android shell |
 | App id | `com.jon2g.tiktokstreaksaver` | `com.sxvuj.streaksaver` |
 | App name | Streak Saver | Streak Saver RS |
-| Version | 2.2.0 | starts at 1.0.0 (now 1.2.0) |
+| Version | 2.2.0 | starts at 1.0.0 (now 1.3.0) |
 | Platforms | Android, experimental iOS | Android |
 | Update source | Jon2G releases | this repository's releases |
 
@@ -211,7 +217,7 @@ There are no analytics, ads or developer-owned servers in this project. The app 
 Released under the [MIT License](LICENSE). The original work is copyright (c) 2024 jon2g and the Rust rewrite is copyright (c) 2026 sxvuj
 
 - [Jon2G/TiktokStreakSaver](https://github.com/Jon2G/TiktokStreakSaver): the original app this project is based on, including the TikTok automation scripts and the behavior the Rust core reproduces.
-- [Google Sans Flex](https://fonts.google.com/specimen/Google+Sans+Flex): the typeface, used under the SIL Open Font License 1.1 (see `licenses/GoogleSansFlex-OFL.txt`). The visual design follows the Fitbit (Google Health) app, and no assets from it are included.
+- [Google Sans Flex](https://fonts.google.com/specimen/Google+Sans+Flex): the typeface, used under the SIL Open Font License 1.1 (see `licenses/GoogleSansFlex-OFL.txt`). The app ships rounded static instances (ROND 100) made with `scripts/make-fonts.py`. The visual design follows the Fitbit (Google Health) app, and no assets from it are included.
 - [eulfn/streak-tiktok](https://github.com/eulfn/streak-tiktok): the multi-page redesign and stability work that the upstream app builds on.
 - [RusdiEneri](https://github.com/RusdiEneri/TiktokStreakSaver): the login guard and inbox viewport fixes ported upstream.
 - [erkamyaman/rust-anything](https://github.com/erkamyaman/rust-anything): the parity-first Android JNI profile used to structure the port.

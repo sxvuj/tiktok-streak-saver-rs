@@ -65,6 +65,18 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     val run = RunStatus.state
 
+    // Appearance is a phone-only UI choice, so it lives in SharedPreferences, not in the Rust core.
+    private val uiPrefs = app.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+
+    /** Wallpaper-based Material You colors (Android 12+). Off keeps the built-in blue palette. */
+    var dynamicColor by mutableStateOf(uiPrefs.getBoolean(KEY_DYNAMIC_COLOR, false))
+        private set
+
+    fun setDynamicColor(on: Boolean) {
+        dynamicColor = on
+        uiPrefs.edit().putBoolean(KEY_DYNAMIC_COLOR, on).apply()
+    }
+
     private val messageFlow = MutableSharedFlow<String>(extraBufferCapacity = 8)
 
     /** One-off messages for a snackbar. */
@@ -452,5 +464,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val OVERDUE_MS = 5L * 60L * 1000L
+        const val UI_PREFS = "ui_prefs"
+        const val KEY_DYNAMIC_COLOR = "dynamic_color"
     }
 }

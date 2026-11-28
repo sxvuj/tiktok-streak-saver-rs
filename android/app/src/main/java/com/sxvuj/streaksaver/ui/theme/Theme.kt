@@ -1,5 +1,9 @@
 package com.sxvuj.streaksaver.ui.theme
 
+import android.os.Build
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
@@ -7,6 +11,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -14,6 +20,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -25,6 +32,10 @@ import com.sxvuj.streaksaver.R
 /**
  * Google Sans Flex (SIL Open Font License 1.1, see licenses/GoogleSansFlex-OFL.txt) as static
  * instances of the variable font, so every weight renders the same on every Android version.
+ *
+ * The instances are cut with the font's roundness axis at its maximum (ROND 100, opsz 18,
+ * wdth 100), the soft rounded terminals Google uses in the Fitbit / Google Health app and other
+ * Material 3 Expressive apps. scripts/make-fonts.py rebuilds them from the variable font.
  */
 val GoogleSansFlex = FontFamily(
     Font(R.font.google_sans_flex_regular, FontWeight.Normal),
@@ -62,12 +73,13 @@ private val BoldTypography = Typography(
     labelSmall = style(11, 16, FontWeight.Bold, 0.4),
 )
 
+// Generous corners to match the rounded type: cards read as soft pebbles, like in Google Health.
 private val FitShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(26.dp),
+    extraLarge = RoundedCornerShape(32.dp),
 )
 
 // Blue-neutral Material 3 palette in the style of the Fitbit / Google Health app: a blue gauge, teal
@@ -102,6 +114,11 @@ private val LightColors: ColorScheme = lightColorScheme(
     surfaceContainer = Color(0xFFECEEF5),
     surfaceContainerHigh = Color(0xFFE6E8EF),
     surfaceContainerHighest = Color(0xFFE1E2E9),
+    surfaceBright = Color(0xFFF8F9FF),
+    surfaceDim = Color(0xFFD8DAE0),
+    inversePrimary = Color(0xFFAEC6FF),
+    inverseSurface = Color(0xFF2E3036),
+    inverseOnSurface = Color(0xFFEFF0F7),
 )
 
 private val DarkColors: ColorScheme = darkColorScheme(
@@ -134,6 +151,11 @@ private val DarkColors: ColorScheme = darkColorScheme(
     surfaceContainer = Color(0xFF1D2024),
     surfaceContainerHigh = Color(0xFF282A2F),
     surfaceContainerHighest = Color(0xFF33353A),
+    surfaceBright = Color(0xFF37393E),
+    surfaceDim = Color(0xFF111318),
+    inversePrimary = Color(0xFF2B63DB),
+    inverseSurface = Color(0xFFE2E2E9),
+    inverseOnSurface = Color(0xFF2E3036),
 )
 
 /** Accent colors the Material 3 scheme has no slot for: the gauge and the teal and amber tiles. */
@@ -183,12 +205,113 @@ object Fit {
         get() = LocalFitColors.current
 }
 
-/** Material 3 in the Fitbit / Google Health look, with Google Sans Flex in heavy weights, following the system light/dark setting. */
+/** True on Android 12 and newer, where the system offers wallpaper-based (Monet) colors. */
+val supportsDynamicColor: Boolean
+    get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/**
+ * The accent slots taken from a dynamic (wallpaper) scheme, so the gauge, the group badges and the
+ * stat tiles follow Monet too: blue becomes primary, teal becomes tertiary and amber secondary.
+ */
+private fun fitFrom(scheme: ColorScheme) = FitColors(
+    gauge = scheme.primary,
+    gaugeSoft = scheme.inversePrimary,
+    gaugeTrack = scheme.surfaceContainerHighest,
+    teal = scheme.tertiary,
+    tealContainer = scheme.tertiaryContainer,
+    onTealContainer = scheme.onTertiaryContainer,
+    amber = scheme.secondary,
+    amberContainer = scheme.secondaryContainer,
+    onAmberContainer = scheme.onSecondaryContainer,
+)
+
+// Every color glides to its new value when the theme changes (dynamic color on/off, light/dark)
+// instead of snapping, so the whole app morphs from one palette into the other.
+private val ThemeSpec = tween<Color>(durationMillis = 550, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))
+
 @Composable
-fun StreakTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalFitColors provides (if (darkTheme) DarkFit else LightFit)) {
+private fun animate(target: Color, name: String): Color =
+    animateColorAsState(target, ThemeSpec, label = name).value
+
+@Composable
+private fun ColorScheme.animated(): ColorScheme = copy(
+    primary = animate(primary, "primary"),
+    onPrimary = animate(onPrimary, "onPrimary"),
+    primaryContainer = animate(primaryContainer, "primaryContainer"),
+    onPrimaryContainer = animate(onPrimaryContainer, "onPrimaryContainer"),
+    inversePrimary = animate(inversePrimary, "inversePrimary"),
+    secondary = animate(secondary, "secondary"),
+    onSecondary = animate(onSecondary, "onSecondary"),
+    secondaryContainer = animate(secondaryContainer, "secondaryContainer"),
+    onSecondaryContainer = animate(onSecondaryContainer, "onSecondaryContainer"),
+    tertiary = animate(tertiary, "tertiary"),
+    onTertiary = animate(onTertiary, "onTertiary"),
+    tertiaryContainer = animate(tertiaryContainer, "tertiaryContainer"),
+    onTertiaryContainer = animate(onTertiaryContainer, "onTertiaryContainer"),
+    background = animate(background, "background"),
+    onBackground = animate(onBackground, "onBackground"),
+    surface = animate(surface, "surface"),
+    onSurface = animate(onSurface, "onSurface"),
+    surfaceVariant = animate(surfaceVariant, "surfaceVariant"),
+    onSurfaceVariant = animate(onSurfaceVariant, "onSurfaceVariant"),
+    surfaceTint = animate(surfaceTint, "surfaceTint"),
+    inverseSurface = animate(inverseSurface, "inverseSurface"),
+    inverseOnSurface = animate(inverseOnSurface, "inverseOnSurface"),
+    error = animate(error, "error"),
+    onError = animate(onError, "onError"),
+    errorContainer = animate(errorContainer, "errorContainer"),
+    onErrorContainer = animate(onErrorContainer, "onErrorContainer"),
+    outline = animate(outline, "outline"),
+    outlineVariant = animate(outlineVariant, "outlineVariant"),
+    surfaceBright = animate(surfaceBright, "surfaceBright"),
+    surfaceDim = animate(surfaceDim, "surfaceDim"),
+    surfaceContainer = animate(surfaceContainer, "surfaceContainer"),
+    surfaceContainerHigh = animate(surfaceContainerHigh, "surfaceContainerHigh"),
+    surfaceContainerHighest = animate(surfaceContainerHighest, "surfaceContainerHighest"),
+    surfaceContainerLow = animate(surfaceContainerLow, "surfaceContainerLow"),
+    surfaceContainerLowest = animate(surfaceContainerLowest, "surfaceContainerLowest"),
+)
+
+@Composable
+private fun FitColors.animated(): FitColors = FitColors(
+    gauge = animate(gauge, "gauge"),
+    gaugeSoft = animate(gaugeSoft, "gaugeSoft"),
+    gaugeTrack = animate(gaugeTrack, "gaugeTrack"),
+    teal = animate(teal, "teal"),
+    tealContainer = animate(tealContainer, "tealContainer"),
+    onTealContainer = animate(onTealContainer, "onTealContainer"),
+    amber = animate(amber, "amber"),
+    amberContainer = animate(amberContainer, "amberContainer"),
+    onAmberContainer = animate(onAmberContainer, "onAmberContainer"),
+)
+
+/**
+ * Material 3 in the Fitbit / Google Health look, with rounded Google Sans Flex in heavy weights,
+ * following the system light/dark setting. With [dynamicColor] on (Android 12+), the colors come
+ * from the wallpaper (Monet) instead of the built-in blue palette.
+ */
+@Composable
+fun StreakTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    val dynamic = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val scheme: ColorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        darkTheme -> DarkColors
+        else -> LightColors
+    }
+    val fit = when {
+        dynamic -> fitFrom(scheme)
+        darkTheme -> DarkFit
+        else -> LightFit
+    }
+    CompositionLocalProvider(LocalFitColors provides fit.animated()) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = scheme.animated(),
             typography = BoldTypography,
             shapes = FitShapes,
             content = content,

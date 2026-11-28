@@ -2,6 +2,9 @@
 
 package com.sxvuj.streaksaver.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +55,7 @@ fun HomeScreen(
     val colors = MaterialTheme.colorScheme
 
     var pulling by remember { mutableStateOf(false) }
+    val entrance = rememberEntrance()
     LaunchedEffect(ui.updateChecking) { if (!ui.updateChecking) pulling = false }
 
     PullToRefreshBox(
@@ -70,10 +74,11 @@ fun HomeScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ScreenHeader("Today", subtitle = formatDayLong(now))
+            ScreenHeader("Today", subtitle = formatDayLong(now), modifier = Modifier.entrance(0, entrance))
 
             val update = ui.update
-            if (update != null && update.available) {
+            AnimatedVisibility(visible = update != null && update.available) {
+                if (update == null) return@AnimatedVisibility
                 SectionCard(
                     containerColor = colors.primaryContainer,
                     contentColor = colors.onPrimaryContainer,
@@ -84,7 +89,7 @@ fun HomeScreen(
                 }
             }
 
-            if (ui.loaded && !ui.session.valid) {
+            AnimatedVisibility(visible = ui.loaded && !ui.session.valid) {
                 SectionCard(
                     containerColor = colors.errorContainer,
                     contentColor = colors.onErrorContainer,
@@ -106,70 +111,100 @@ fun HomeScreen(
             }
 
             // The hero card: the thick gauge with today's progress and the run button under it.
-            SectionCard(containerColor = colors.surfaceContainerLow) {
+            SectionCard(containerColor = colors.surfaceContainerLow, modifier = Modifier.entrance(1, entrance)) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val progress = if (dash.enabledTargets > 0) dash.sentToday.toFloat() / dash.enabledTargets else 0f
                     GaugeRing(progress = progress, diameter = 220.dp, thickness = 22.dp) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${dash.sentToday}", style = MaterialTheme.typography.displayLarge)
-                            Text(
-                                "of ${dash.enabledTargets} chats",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = colors.onSurfaceVariant,
-                            )
+                            AnimatedNumberText("${dash.sentToday}", style = MaterialTheme.typography.displayLarge)
+                            AnimatedContent(
+                                targetState = dash.enabledTargets,
+                                transitionSpec = { rollingText(up = targetState > initialState) },
+                                label = "targets",
+                            ) { total ->
+                                Text(
+                                    "of $total chats",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = colors.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
-                Text(
-                    when {
+                AnimatedContent(
+                    targetState = when {
                         dash.enabledTargets == 0 -> "No chats turned on"
                         dash.remainingToday == 0 -> "Everyone is covered today"
                         else -> "${dash.remainingToday} still to message"
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.titleLarge,
-                    textAlign = TextAlign.Center,
-                )
+                    transitionSpec = { rollingText() },
+                    contentAlignment = Alignment.Center,
+                    label = "remaining",
+                ) { summary ->
+                    Text(
+                        summary,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.titleLarge,
+                        textAlign = TextAlign.Center,
+                    )
+                }
 
-                if (run.running) {
-                    val label = if (run.total > 0) "Sending ${run.index} of ${run.total}: ${run.current}" else run.current
-                    Text(label, style = MaterialTheme.typography.bodyMedium)
-                    val bar = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(CircleShape)
-                    if (run.total > 0) {
-                        LinearProgressIndicator(
-                            progress = { (run.index - 1).coerceAtLeast(0).toFloat() / run.total },
-                            modifier = bar,
-                            color = Fit.colors.gauge,
-                            trackColor = Fit.colors.gaugeTrack,
-                        )
-                    } else {
-                        LinearProgressIndicator(
-                            modifier = bar,
-                            color = Fit.colors.gauge,
-                            trackColor = Fit.colors.gaugeTrack,
-                        )
+                // Run now <-> live progress: one block morphs into the other instead of popping.
+                AnimatedContent(
+                    targetState = run.running,
+                    transitionSpec = { softSwap() },
+                    label = "runControls",
+                ) { running ->
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (running) {
+                            val label = if (run.total > 0) "Sending ${run.index} of ${run.total}: ${run.current}" else run.current
+                            AnimatedContent(targetState = label, transitionSpec = { rollingText() }, label = "runLabel") { text ->
+                                Text(text, style = MaterialTheme.typography.bodyMedium)
+                            }
+                            val bar = Modifier
+                                .fillMaxWidth()
+                                .height(10.dp)
+                                .clip(CircleShape)
+                            if (run.total > 0) {
+                                val runProgress by animateFloatAsState(
+                                    targetValue = (run.index - 1).coerceAtLeast(0).toFloat() / run.total,
+                                    animationSpec = Motion.slowSpatial(),
+                                    label = "runProgress",
+                                )
+                                LinearProgressIndicator(
+                                    progress = { runProgress },
+                                    modifier = bar,
+                                    color = Fit.colors.gauge,
+                                    trackColor = Fit.colors.gaugeTrack,
+                                )
+                            } else {
+                                LinearProgressIndicator(
+                                    modifier = bar,
+                                    color = Fit.colors.gauge,
+                                    trackColor = Fit.colors.gaugeTrack,
+                                )
+                            }
+                            PillTonalButton(
+                                if (run.stopping) "Stopping" else "Stop",
+                                onClick = { model.stopRun() },
+                                modifier = Modifier.fillMaxWidth(),
+                                icon = Icons.Filled.Close,
+                                enabled = !run.stopping,
+                            )
+                        } else {
+                            PillButton(
+                                "Run now",
+                                onClick = { model.runNow() },
+                                modifier = Modifier.fillMaxWidth(),
+                                icon = Icons.Filled.PlayArrow,
+                            )
+                        }
                     }
-                    PillTonalButton(
-                        if (run.stopping) "Stopping" else "Stop",
-                        onClick = { model.stopRun() },
-                        modifier = Modifier.fillMaxWidth(),
-                        icon = Icons.Filled.Close,
-                        enabled = !run.stopping,
-                    )
-                } else {
-                    PillButton(
-                        "Run now",
-                        onClick = { model.runNow() },
-                        modifier = Modifier.fillMaxWidth(),
-                        icon = Icons.Filled.PlayArrow,
-                    )
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.entrance(2, entrance), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatTile(
                     dash.friendsTotal.toString(), "Friends", Modifier.weight(1f),
                     container = colors.primaryContainer, content = colors.onPrimaryContainer,
@@ -184,7 +219,7 @@ fun HomeScreen(
                 )
             }
 
-            SectionCard(title = "Schedule") {
+            SectionCard(title = "Schedule", modifier = Modifier.entrance(3, entrance)) {
                 val settings = ui.settings
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Next run", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
@@ -221,19 +256,19 @@ fun HomeScreen(
                 }
             }
 
-            MessageCard(ui, onEditMessages)
+            MessageCard(ui, onEditMessages, Modifier.entrance(4, entrance))
         }
     }
 }
 
 /** Shows what will be sent and opens the editor. */
 @Composable
-private fun MessageCard(ui: UiData, onEdit: () -> Unit) {
+private fun MessageCard(ui: UiData, onEdit: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val settings = ui.settings
     val pool = ui.randomMessages.messages
 
-    SectionCard(title = "Message") {
+    SectionCard(title = "Message", modifier = modifier) {
         if (settings.randomize) {
             StatusPill(
                 if (pool.isEmpty()) "Random, list empty" else "Random, ${pool.size} messages",
@@ -254,7 +289,10 @@ private fun MessageCard(ui: UiData, onEdit: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant,
                 )
-                Text("\"$sample\"", style = MaterialTheme.typography.titleMedium)
+                // Each "Show another" rolls the new example in from below.
+                AnimatedContent(targetState = sample, transitionSpec = { rollingText() }, label = "sample") { example ->
+                    Text("\"$example\"", style = MaterialTheme.typography.titleMedium)
+                }
                 TextButton(onClick = { sample = pool.randomOrNull().orEmpty() }) {
                     Text("Show another", style = MaterialTheme.typography.labelLarge)
                 }
