@@ -78,6 +78,25 @@ pub struct AutomationConfig {
     pub chat_priority: ChatPriority,
     pub randomize_messages: bool,
     pub custom_message: String,
+    /// The pool random mode draws from. `None` means the built-in phrases.
+    #[serde(default)]
+    pub random_messages: Option<Vec<String>>,
+}
+
+impl AutomationConfig {
+    fn build_deck(&self) -> MessageDeck {
+        match &self.random_messages {
+            Some(list) => MessageDeck::from_pool(list.clone()),
+            None => MessageDeck::from_builtin(),
+        }
+    }
+
+    fn build_seeded_deck(&self, seed: u64) -> MessageDeck {
+        match &self.random_messages {
+            Some(list) => MessageDeck::from_pool_seeded(list.clone(), seed),
+            None => MessageDeck::from_builtin_seeded(seed),
+        }
+    }
 }
 
 impl From<&AppSettings> for AutomationConfig {
@@ -88,6 +107,7 @@ impl From<&AppSettings> for AutomationConfig {
             chat_priority: s.chat_priority,
             randomize_messages: s.randomize_normal_messages,
             custom_message: s.message_text.clone(),
+            random_messages: s.random_messages.clone(),
         }
     }
 }
@@ -223,6 +243,7 @@ pub struct RunStateMachine {
 
 impl RunStateMachine {
     pub fn new(plan: RunPlan, config: AutomationConfig, started_at: DateTime<Utc>) -> Self {
+        let deck = config.build_deck();
         Self {
             config,
             targets: plan.targets,
@@ -230,14 +251,14 @@ impl RunStateMachine {
             started_at,
             cursor: 0,
             current_attempt: 1,
-            deck: MessageDeck::from_builtin(),
+            deck,
             results: Vec::new(),
             auto_disabled_ids: Vec::new(),
         }
     }
 
     pub fn with_seeded_deck(mut self, seed: u64) -> Self {
-        self.deck = MessageDeck::from_builtin_seeded(seed);
+        self.deck = self.config.build_seeded_deck(seed);
         self
     }
 
@@ -493,6 +514,7 @@ mod tests {
             chat_priority: ChatPriority::Mixed,
             randomize_messages: false,
             custom_message: "streak".to_string(),
+            random_messages: None,
         };
         let mut sm = RunStateMachine::new(plan, config, ts(10));
         let _ = sm.next_action();
@@ -513,5 +535,66 @@ mod tests {
         let vp = compute_webview_viewport(2.75);
         assert_eq!(vp.width_px, 5280);
         assert_eq!(vp.height_px, 2970);
+    }
+
+    fn random_config(pool: Option<Vec<String>>) -> AutomationConfig {
+        AutomationConfig {
+            max_retries_per_friend: 0,
+            skip_unreachable_users: true,
+            chat_priority: ChatPriority::Mixed,
+            randomize_messages: true,
+            custom_message: "my own text".to_string(),
+            random_messages: pool,
+        }
+    }
+
+    fn first_message(config: AutomationConfig, seed: u64) -> String {
+        let friends = vec![FriendConfig::new_friend("f1", "alice", "Alice")];
+        let plan = build_run_plan(&friends, None, ChatPriority::Mixed, ts(10));
+        let mut sm = RunStateMachine::new(plan, config, ts(10)).with_seeded_deck(seed);
+        match sm.next_action() {
+            AutomationAction::InjectScript { message, .. } => message,
+            AutomationAction::Complete { .. } => String::new(),
+        }
+    }
+
+    #[test]
+    fn random_mode_draws_from_the_users_pool() {
+        let pool = vec!["only this".to_string()];
+        assert_eq!(first_message(random_config(Some(pool)), 3), "only this");
+    }
+
+    #[test]
+    fn random_mode_with_an_emptied_pool_sends_the_custom_message() {
+        assert_eq!(
+            first_message(random_config(Some(Vec::new())), 3),
+            "my own text"
+        );
+    }
+
+    #[test]
+    fn random_mode_without_a_pool_uses_the_built_in_phrases() {
+        let msg = first_message(random_config(None), 3);
+        assert!(crate::messages::RANDOMIZED_STREAK_MESSAGES.contains(&msg.as_str()));
+    }
+
+    #[test]
+    fn config_from_settings_carries_the_pool() {
+        let settings = AppSettings {
+            randomize_normal_messages: true,
+            random_messages: Some(vec!["a".to_string()]),
+            ..AppSettings::default()
+        };
+        let config = AutomationConfig::from(&settings);
+        assert!(config.randomize_messages);
+        assert_eq!(config.random_messages, Some(vec!["a".to_string()]));
+    }
+
+    #[test]
+    fn old_config_json_without_a_pool_still_loads() {
+        let raw = r#"{"max_retries_per_friend":2,"skip_unreachable_users":true,
+            "chat_priority":"mixed","randomize_messages":true,"custom_message":"x"}"#;
+        let config: Option<AutomationConfig> = serde_json::from_str(raw).ok();
+        assert_eq!(config.map(|c| c.random_messages), Some(None));
     }
 }

@@ -159,12 +159,30 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$SRC"
           mkdir -p dist
           cp "$SRC" "dist/StreakSaver-RS-v${VERSION}.apk"
+          # A checksum next to the APK lets anyone confirm a download was not altered or cut short.
+          (cd dist && sha256sum "StreakSaver-RS-v${VERSION}.apk" > "StreakSaver-RS-v${VERSION}.apk.sha256")
+          CERT="$("$APKSIGNER" verify --print-certs "$SRC" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1)"
+          APK_SHA="$(cut -d' ' -f1 "dist/StreakSaver-RS-v${VERSION}.apk.sha256")"
+          SCHEMES="$("$APKSIGNER" verify --verbose "$SRC" | grep -E '^Verified using' | tr '\n' ';')"
+          {
+            echo "### Signed APK v${VERSION}"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Signing certificate (SHA-256) | \`${CERT}\` |"
+            echo "| APK (SHA-256) | \`${APK_SHA}\` |"
+            echo "| Signature schemes | ${SCHEMES} |"
+            echo
+            echo "Releases built from a tag are signed with the permanent key, so this certificate fingerprint stays the same from release to release. Branch and pull request builds use a throwaway key and show a different fingerprint every time."
+          } >> "$GITHUB_STEP_SUMMARY"
           ls -l dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: StreakSaver-RS-release-apk
-          path: dist/*.apk
+          path: |
+            dist/*.apk
+            dist/*.sha256
           if-no-files-found: error
 
   android-smoke:
@@ -229,5 +247,7 @@ jobs:
         with:
           name: Streak Saver RS v${{ needs.android-apk.outputs.version }}
           body_path: release-notes.md
-          files: dist/*.apk
+          files: |
+            dist/*.apk
+            dist/*.sha256
           fail_on_unmatched_files: true

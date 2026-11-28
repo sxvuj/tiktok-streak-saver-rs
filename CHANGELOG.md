@@ -3,6 +3,27 @@
 All notable changes to Streak Saver RS are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-28
+
+A full redesign in the style of the Fitbit app, editable random messages, and signing and permission clean-up after a Play Protect report.
+
+### Added
+- Message editor (Settings > Edit messages, or Today > Edit messages). Switch between one fixed message and a random list. The list can be added to, edited, deleted from, edited as plain text (one message per line) and reset to the 49 built-in phrases. Changes are a draft until Save, with Discard and a prompt before leaving. Messages are trimmed, cut at 280 characters, de-duplicated and capped at 200, and the app says how many were left out.
+- The editable list is stored in the Rust core (`random_messages` in settings) and used by background runs, not only the screen. An empty list falls back to your single message.
+- SHA-256 checksum file next to every release APK, and the signing certificate fingerprint in the build summary.
+
+### Changed
+- New look after the Fitbit (Google Health) app: blue neutral palette with teal and amber accents, thick 270 degree gauge, large rounded cards, pill buttons, scalloped badges and a bottom bar with a pill indicator.
+- Google Sans Flex in heavy weights (Black, ExtraBold, Bold) for all text. Licensed under the SIL Open Font License 1.1.
+- Tabs are now Today, Friends, History and Settings (were Home, Chats, History and Profile).
+- Release APKs are signed with the v1, v2 and v3 schemes and no longer embed the dependency-metadata block.
+
+### Removed
+- The `USE_EXACT_ALARM` permission, which is meant for alarm and calendar apps. Exact alarms now need the user-granted `SCHEDULE_EXACT_ALARM` (Settings > Exact alarms). Without it, runs can start a few minutes late.
+
+### Notes
+- Play Protect: the cause of the "Harmful app blocked" report on 1.0.0 is not known. See the Play Protect section of the README for what is known, what the changes above do and do not guarantee, and how to appeal.
+
 ## [1.1.1] - 2026-11-24
 
 First version published on the GitHub Releases page, so the in-app update check now has something to find.

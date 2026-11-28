@@ -12,8 +12,8 @@ android {
         applicationId = "com.sxvuj.streaksaver"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.2.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -30,6 +30,11 @@ android {
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
+                // Sign with every scheme: v1 (JAR) for old installers and scanners that still read it,
+                // v2 and v3 for current Android.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
@@ -57,6 +62,13 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    // Do not embed Google's encrypted dependency-metadata blob in the signing block. It is only
+    // useful for Play uploads, and leaving it out keeps the APK free of opaque data.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     packaging {

@@ -23,10 +23,14 @@ pub use automation::{
     TIKTOK_AUTOMATION_JS,
 };
 pub use error::{Result, StreakError};
-pub use messages::{MessageDeck, RANDOMIZED_STREAK_MESSAGES};
+pub use messages::{
+    builtin_messages, sanitize_message, sanitize_pool, MessageDeck, SanitizedPool,
+    MAX_MESSAGE_CHARS, MAX_RANDOM_MESSAGES, RANDOMIZED_STREAK_MESSAGES,
+};
 pub use models::{
     AppSettings, ChatPriority, DashboardState, FriendConfig, FriendMessageResult, HistoryStats,
-    ImportReport, RunSummary, SessionState, StreakRunResult, UpdateInfo,
+    ImportReport, RandomMessagesState, RunSummary, SavedRandomMessages, SessionState,
+    StreakRunResult, UpdateInfo,
 };
 pub use run::RunSession;
 pub use scheduler::{

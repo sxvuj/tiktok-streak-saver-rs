@@ -655,6 +655,58 @@ pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_recordSkippedRun
 }
 
 // ---------------------------------------------------------------------------------------------
+// Random messages
+// ---------------------------------------------------------------------------------------------
+
+/// `RustCore.loadRandomMessagesJson(storageDir: String): String` (JSON `RandomMessagesState`)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_loadRandomMessagesJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage.load_random_messages().map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.saveRandomMessagesJson(storageDir: String, messagesJson: String): String`
+/// (JSON `SavedRandomMessages`). `messagesJson` is a JSON array of strings.
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_saveRandomMessagesJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+    messages_json: JString<'_>,
+) -> jstring {
+    let res = (|| {
+        let storage = open_storage(&mut env, storage_dir)?;
+        let raw = read_jstring(&mut env, messages_json)?;
+        let list: Vec<String> = serde_json::from_str(&raw)
+            .map_err(|e| format!("Expected a JSON list of messages: {e}"))?;
+        storage.save_random_messages(&list).map_err(core_err)
+    })();
+    respond(&mut env, res)
+}
+
+/// `RustCore.resetRandomMessages(storageDir: String): Boolean` (back to the built-in phrases)
+#[no_mangle]
+pub extern "system" fn Java_com_sxvuj_streaksaver_rust_RustCore_resetRandomMessages(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    storage_dir: JString<'_>,
+) -> jboolean {
+    let ok = (|| -> Result<(), String> {
+        let storage = open_storage(&mut env, storage_dir)?;
+        storage.reset_random_messages().map_err(core_err)
+    })()
+    .is_ok();
+    to_jbool(ok)
+}
+
+// ---------------------------------------------------------------------------------------------
 // Friends and groups
 // ---------------------------------------------------------------------------------------------
 

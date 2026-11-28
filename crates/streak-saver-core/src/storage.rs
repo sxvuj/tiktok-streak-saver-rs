@@ -5,9 +5,11 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, U
 use serde_json::{Map, Value};
 
 use crate::error::{Result, StreakError};
+use crate::messages::sanitize_pool;
 use crate::models::{
-    normalize_target_name, AppSettings, DashboardState, FriendConfig, HistoryStats, ImportReport,
-    SessionState, StreakRunResult, MAX_RUN_HISTORY,
+    builtin_message_count, normalize_target_name, AppSettings, DashboardState, FriendConfig,
+    HistoryStats, ImportReport, RandomMessagesState, SavedRandomMessages, SessionState,
+    StreakRunResult, MAX_RUN_HISTORY,
 };
 
 const SETTINGS_FILE: &str = "settings.json";
@@ -37,6 +39,37 @@ impl AppStorage {
 
     pub fn save_settings(&self, settings: &AppSettings) -> Result<()> {
         self.write_json_atomic(SETTINGS_FILE, settings)
+    }
+
+    /// The random-message pool as the editor shows it (the built-in phrases until the user edits).
+    pub fn load_random_messages(&self) -> Result<RandomMessagesState> {
+        let settings = self.load_settings()?;
+        Ok(RandomMessagesState {
+            custom: settings.random_messages.is_some(),
+            messages: settings.effective_random_messages(),
+            builtin_count: builtin_message_count(),
+        })
+    }
+
+    /// Replaces the random-message pool with the cleaned version of `raw` (see
+    /// [`sanitize_pool`]). An empty result is kept as the user's choice: random mode then sends
+    /// the plain custom message instead.
+    pub fn save_random_messages(&self, raw: &[String]) -> Result<SavedRandomMessages> {
+        let cleaned = sanitize_pool(raw);
+        let mut settings = self.load_settings()?;
+        settings.random_messages = Some(cleaned.messages.clone());
+        self.save_settings(&settings)?;
+        Ok(SavedRandomMessages {
+            messages: cleaned.messages,
+            dropped: cleaned.dropped,
+        })
+    }
+
+    /// Goes back to the built-in phrases.
+    pub fn reset_random_messages(&self) -> Result<()> {
+        let mut settings = self.load_settings()?;
+        settings.random_messages = None;
+        self.save_settings(&settings)
     }
 
     pub fn load_friends(&self) -> Result<Vec<FriendConfig>> {
@@ -812,6 +845,73 @@ mod tests {
         assert_eq!(s.interval_hours, 12);
         assert_eq!(s.next_run_utc, None);
         assert!(s.skip_unreachable_users);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn random_messages_default_to_the_built_in_pool() {
+        let (store, dir) = temp_store("rm-default");
+        let state = store.load_random_messages().unwrap();
+        assert!(!state.custom);
+        assert_eq!(state.messages.len(), state.builtin_count);
+        assert_eq!(state.builtin_count, 49);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn random_messages_save_clean_and_reset() {
+        let (store, dir) = temp_store("rm-save");
+        let saved = store
+            .save_random_messages(&[
+                "  hey  ".to_string(),
+                "hey".to_string(),
+                "".to_string(),
+                "yo\nthere".to_string(),
+            ])
+            .unwrap();
+        assert_eq!(saved.messages, vec!["hey", "yo there"]);
+        assert_eq!(saved.dropped, 2);
+
+        let state = store.load_random_messages().unwrap();
+        assert!(state.custom);
+        assert_eq!(state.messages, vec!["hey", "yo there"]);
+
+        // Other settings are untouched by a pool edit.
+        assert_eq!(
+            store.load_settings().unwrap().message_text,
+            AppSettings::default().message_text
+        );
+
+        store.reset_random_messages().unwrap();
+        let state = store.load_random_messages().unwrap();
+        assert!(!state.custom);
+        assert_eq!(state.messages.len(), 49);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_emptied_pool_stays_empty_instead_of_falling_back_to_built_in() {
+        let (store, dir) = temp_store("rm-empty");
+        store.save_random_messages(&[]).unwrap();
+        let state = store.load_random_messages().unwrap();
+        assert!(state.custom);
+        assert!(state.messages.is_empty());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn settings_files_with_null_or_missing_pool_load_as_built_in() {
+        let (store, dir) = temp_store("rm-null");
+        fs::write(dir.join("settings.json"), r#"{"random_messages":null}"#).unwrap();
+        assert!(!store.load_random_messages().unwrap().custom);
+        fs::write(
+            dir.join("settings.json"),
+            r#"{"random_messages":["a","b"]}"#,
+        )
+        .unwrap();
+        let state = store.load_random_messages().unwrap();
+        assert!(state.custom);
+        assert_eq!(state.messages, vec!["a", "b"]);
         let _ = fs::remove_dir_all(dir);
     }
 }

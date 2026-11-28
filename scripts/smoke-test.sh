@@ -48,22 +48,26 @@ expect() { # name text
 }
 
 tap_text() { # xml-name text
+  # Tab names also appear higher up (screen titles, stat tiles), so tap the lowest match on screen.
   python3 - "$OUT/$1.xml" "$2" <<'PY' | { read -r x y && adb shell input tap "$x" "$y"; }
 import re, sys
 xml = open(sys.argv[1], encoding="utf-8").read()
+best = None
 for m in re.finditer(r'<node[^>]*?text="%s"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"' % re.escape(sys.argv[2]), xml):
     x1, y1, x2, y2 = map(int, m.groups())
-    print((x1 + x2) // 2, (y1 + y2) // 2)
-    break
+    if best is None or y1 > best[1]:
+        best = ((x1 + x2) // 2, (y1 + y2) // 2)
+if best:
+    print(*best)
 PY
 }
 
 dump home
-expect home "Streak Saver"
+expect home "Today"
 expect home "Not logged in to TikTok"
 expect home "Run now"
 
-tap_text home "Chats"; sleep 2; dump chats
+tap_text home "Friends"; sleep 2; dump chats
 expect chats "No friends or groups yet"
 expect chats "Import list"
 
@@ -71,9 +75,20 @@ tap_text chats "History"; sleep 2; dump history
 expect history "No runs yet"
 expect history "Export log"
 
-tap_text history "Profile"; sleep 2; dump profile
-expect profile "Background automation"
-expect profile "Random messages"
+tap_text history "Settings"; sleep 2; dump settings
+expect settings "Background automation"
+expect settings "Random messages"
+
+# The message editor opens from Settings and hides the tab bar while it is open.
+adb shell input swipe 540 1700 540 900 300; sleep 1; dump settings_low
+tap_text settings_low "Edit messages"; sleep 2; dump messages
+expect messages "Single message"
+expect messages "Random list"
+tap_text messages "Random list"; sleep 2; dump messages_random
+expect messages_random "Add a message"
+expect messages_random "Edit as text"
+adb shell input keyevent 4; sleep 2; dump back_to_settings
+expect back_to_settings "Settings"
 
 adb logcat -d > "$OUT/logcat.txt"
 if grep -E "FATAL EXCEPTION|UnsatisfiedLinkError|AndroidRuntime: Process: $PKG" "$OUT/logcat.txt"; then

@@ -40,6 +40,11 @@ object RustCore {
     external fun loadSettingsJson(storageDir: String): String
     external fun saveSettingsJson(storageDir: String, settingsJson: String): Boolean
 
+    // --- Random message pool -----------------------------------------------------------------
+    external fun loadRandomMessagesJson(storageDir: String): String
+    external fun saveRandomMessagesJson(storageDir: String, messagesJson: String): String
+    external fun resetRandomMessages(storageDir: String): Boolean
+
     // --- Friends and groups ------------------------------------------------------------------
     external fun loadFriendsJson(storageDir: String): String
     external fun saveFriendsJson(storageDir: String, friendsJson: String): Boolean

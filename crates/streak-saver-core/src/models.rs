@@ -1,6 +1,8 @@
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::messages::{builtin_messages, RANDOMIZED_STREAK_MESSAGES};
+
 /// Default custom streak message matching `Jon2G/TiktokStreakSaver` v2.2.0.
 pub const DEFAULT_MESSAGE_TEXT: &str = "Hey! Keeping our streak alive! 🔥";
 
@@ -264,6 +266,9 @@ pub struct DashboardState {
 pub struct AppSettings {
     pub message_text: String,
     pub randomize_normal_messages: bool,
+    /// The user's own random-message pool. `None` means the built-in phrases are used; `Some`
+    /// (even an empty list) is the user's choice and is used as it is.
+    pub random_messages: Option<Vec<String>>,
     pub interval_hours: u8,
     pub last_run: Option<DateTime<Utc>>,
     pub is_scheduled: bool,
@@ -284,6 +289,14 @@ pub struct AppSettings {
 }
 
 impl AppSettings {
+    /// The phrases random mode draws from: the user's pool, or the built-in one when none was set.
+    pub fn effective_random_messages(&self) -> Vec<String> {
+        match &self.random_messages {
+            Some(list) => list.clone(),
+            None => builtin_messages(),
+        }
+    }
+
     /// Window in hours during which a chat that already got a message is skipped.
     ///
     /// The upstream rule "skip anyone messaged today" breaks with the default 23 hour interval:
@@ -304,6 +317,7 @@ impl Default for AppSettings {
         Self {
             message_text: DEFAULT_MESSAGE_TEXT.to_string(),
             randomize_normal_messages: false,
+            random_messages: None,
             interval_hours: DEFAULT_INTERVAL_HOURS,
             last_run: None,
             is_scheduled: false,
@@ -322,6 +336,29 @@ impl Default for AppSettings {
             next_run_utc: None,
         }
     }
+}
+
+/// The random-message pool as the editor shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RandomMessagesState {
+    /// `true` when the user changed the pool, `false` while the built-in phrases are in use.
+    pub custom: bool,
+    pub messages: Vec<String>,
+    /// How many phrases ship with the app, for the "Reset to defaults" label.
+    pub builtin_count: usize,
+}
+
+/// What was stored after the user saved an edited pool.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedRandomMessages {
+    pub messages: Vec<String>,
+    /// Entries left out because they were empty, too long, duplicates or over the size cap.
+    pub dropped: usize,
+}
+
+/// Number of built-in phrases.
+pub fn builtin_message_count() -> usize {
+    RANDOMIZED_STREAK_MESSAGES.len()
 }
 
 /// Persistent TikTok WebView session metadata matching `SessionService` in v2.2.0.
