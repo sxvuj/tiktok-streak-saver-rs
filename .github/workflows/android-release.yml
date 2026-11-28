@@ -207,6 +207,8 @@ jobs:
           api-level: 34
           arch: x86_64
           target: default
+          # The default AVD has a 320x640 screen, which hides the lower half of the taller screens.
+          profile: pixel_5
           disable-animations: true
           script: ./scripts/smoke-test.sh dist/*.apk
       - uses: actions/upload-artifact@v4
