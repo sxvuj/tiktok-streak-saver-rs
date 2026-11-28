@@ -16,13 +16,13 @@ A full redesign in the style of the Fitbit app, editable random messages, and si
 - New look after the Fitbit (Google Health) app: blue neutral palette with teal and amber accents, thick 270 degree gauge, large rounded cards, pill buttons, scalloped badges and a bottom bar with a pill indicator.
 - Google Sans Flex in heavy weights (Black, ExtraBold, Bold) for all text. Licensed under the SIL Open Font License 1.1.
 - Tabs are now Today, Friends, History and Settings (were Home, Chats, History and Profile).
-- Release APKs are signed with the v1, v2 and v3 schemes and no longer embed the dependency-metadata block.
+- Release APKs are signed with the v2 and v3 schemes (v1 is not used at minSdk 24) and no longer embed the dependency-metadata block.
 
 ### Removed
 - The `USE_EXACT_ALARM` permission, which is meant for alarm and calendar apps. Exact alarms now need the user-granted `SCHEDULE_EXACT_ALARM` (Settings > Exact alarms). Without it, runs can start a few minutes late.
 
 ### Notes
-- Play Protect: the cause of the "Harmful app blocked" report on 1.0.0 is not known. See the Play Protect section of the README for what is known, what the changes above do and do not guarantee, and how to appeal.
+- Play Protect: the cause of the "Harmful app blocked" report on 1.0.0 is not known, and the signing key is probably not it (CI builds use the same key when the secrets are set). See the Play Protect section of the README for what is known, what the changes above do and do not guarantee, and how to appeal.
 
 ## [1.1.1] - 2026-11-24
 

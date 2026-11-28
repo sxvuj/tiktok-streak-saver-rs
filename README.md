@@ -149,7 +149,7 @@ Releases are built by GitHub Actions, not by hand.
 
 The script creates `streaksaver-release.jks` and prints the exact `gh secret set` commands for the four secrets below (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`). Keep the keystore and password backed up and private; `.jks` files are git-ignored. You can also add the secrets by hand under **Settings > Secrets and variables > Actions**.
 
-**Tag builds refuse to run without these secrets.** Branch and pull request builds fall back to a throwaway key so they still produce a test APK, but that APK cannot update an install signed with a different key, so never hand it out as a release.
+**Tag builds refuse to run without these secrets.** Branch and pull request builds use the same key when the secrets exist, and otherwise fall back to a throwaway key so they still produce a test APK. A throwaway-key APK cannot update an install signed with a different key, so never hand it out as a release.
 
 **Publishing a version:**
 
@@ -162,7 +162,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The workflow checks that the tag matches the app version, builds and verifies the signed Release APK, and attaches `StreakSaver-RS-vX.Y.Z.apk` and its `.sha256` file to the GitHub Release. Every build also writes the signing certificate fingerprint and the APK checksum to the job summary. Tag builds always show the same certificate fingerprint; branch and pull request builds use a throwaway key, so theirs changes every time.
+The workflow checks that the tag matches the app version, builds and verifies the signed Release APK, and attaches `StreakSaver-RS-vX.Y.Z.apk` and its `.sha256` file to the GitHub Release. Every build also writes the signing certificate fingerprint and the APK checksum to the job summary. With the secrets configured, every build shows the same certificate fingerprint; without them, branch builds use a throwaway key and the fingerprint changes every time.
 
 ## Differences from the original app
 
@@ -181,15 +181,15 @@ Version 1.0.0 was blocked by Google Play Protect on at least one phone ("Harmful
 
 **What it is not.** The signature of the release APK is valid (`apksigner verify` passes in CI). A broken signature produces "App not installed" or a parse error, not "Harmful app blocked". Google describes "Harmful App Blocked" as a classification: the app was identified as a Potentially Harmful Application. That decision comes from Google's scanning, behavior and reputation signals, not from the file being malformed.
 
-**Why the release and the CI build can differ.** Branch and pull request builds are signed with a throwaway key that is new on every build, and are usually copied to the phone another way than a browser download. A tagged release is signed with the permanent key and downloaded from the Releases page. Google says Play Protect treats apps it has not seen before differently (it asks to scan them), so a build that looks new to it may be judged differently from one that does not. That is a possible factor, not a proven one.
+**Why the release and the CI build can differ.** It is probably not the signing key. When the repository signing secrets are set, CI builds on branches and pull requests are signed with the same permanent key as releases (the job log says "Signing with the keystore from repository secrets"), so an installed CI build and a release can carry the same certificate. Other differences are the app version (1.0.0 carried permissions that later versions removed), how the file reached the phone (browser download from the Releases page versus a file copied from a CI artifact), and when it was scanned. Google says Play Protect treats apps it has not seen before differently (it asks to scan them), so timing and familiarity may matter. These are possible factors, not proven ones.
 
-**What 1.2.0 changes, as hygiene only.** Google tells developers to use permissions only for their intended purpose. `USE_EXACT_ALARM` is reserved for alarm and calendar apps, so it is removed. The app now asks for `SCHEDULE_EXACT_ALARM` only, which you grant in Settings > Exact alarms. Without it runs can start a few minutes late, which does not matter for a 23 hour schedule. Release APKs are also signed with the v1, v2 and v3 schemes, and the encrypted dependency-metadata block is no longer embedded. None of this is a guaranteed fix. The app still uses a foreground service, a boot receiver and a WebView with JavaScript, because the job needs them.
+**What 1.2.0 changes, as hygiene only.** Google tells developers to use permissions only for their intended purpose. `USE_EXACT_ALARM` is reserved for alarm and calendar apps, so it is removed. The app now asks for `SCHEDULE_EXACT_ALARM` only, which you grant in Settings > Exact alarms. Without it runs can start a few minutes late, which does not matter for a 23 hour schedule. Release APKs are signed with the v2 and v3 schemes (v1 is not used at minSdk 24), and the encrypted dependency-metadata block is no longer embedded. None of this is a guaranteed fix. The app still uses a foreground service, a boot receiver and a WebView with JavaScript, because the job needs them.
 
 **If it still happens:**
 
 1. Check the download first: compare the APK with the `.sha256` file on the release page.
 2. Tap "More details" on the warning, then "Install anyway", or turn off scanning for this install.
-3. Report it to Google. The developer appeal form is at [support.google.com/googleplay/android-developer/contact/protectappeals](https://support.google.com/googleplay/android-developer/contact/protectappeals). Give the package name `com.sxvuj.streaksaver`, the release version and the signing certificate SHA-256 from the release job summary.
+3. Report it to Google. The developer appeal form is at [support.google.com/googleplay/android-developer/contact/protectappeals](https://support.google.com/googleplay/android-developer/contact/protectappeals). Give the package name `com.sxvuj.streaksaver`, the release version and the signing certificate SHA-256 from the build job summary.
 4. Open an issue here with your Android version and the exact wording of the warning.
 
 Changing the signing key is not recommended as a workaround. It would not be a verified fix, and it would stop every existing install from updating.

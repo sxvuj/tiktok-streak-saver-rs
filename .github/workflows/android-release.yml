@@ -173,7 +173,7 @@ jobs:
             echo "| APK (SHA-256) | \`${APK_SHA}\` |"
             echo "| Signature schemes | ${SCHEMES} |"
             echo
-            echo "Releases built from a tag are signed with the permanent key, so this certificate fingerprint stays the same from release to release. Branch and pull request builds use a throwaway key and show a different fingerprint every time."
+            echo "With the signing secrets configured, every build (tag, branch or pull request) is signed with the permanent key and shows the same fingerprint. Without them, branch builds use a throwaway key and show a different fingerprint every time."
           } >> "$GITHUB_STEP_SUMMARY"
           ls -l dist
 

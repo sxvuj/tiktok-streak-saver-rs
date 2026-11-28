@@ -30,9 +30,8 @@ android {
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
-                // Sign with every scheme: v1 (JAR) for old installers and scanners that still read it,
-                // v2 and v3 for current Android.
-                enableV1Signing = true
+                // v1 (JAR) signing is not needed at minSdk 24 and AGP leaves it out. v2 and v3 are
+                // what current Android verifies.
                 enableV2Signing = true
                 enableV3Signing = true
             }
