@@ -15,13 +15,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,14 +29,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,7 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sxvuj.streaksaver.data.Chat
 
@@ -81,17 +78,25 @@ fun FriendsScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            TabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Friends ($friendsCount)") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Groups ($groupsCount)") })
-            }
+            ScreenHeader(
+                title = "Friends",
+                modifier = Modifier.padding(horizontal = 16.dp),
+                subtitle = "${ui.chats.count { it.enabled }} of ${ui.chats.size} turned on",
+            )
+
+            SegmentedPills(
+                options = listOf("Friends ($friendsCount)", "Groups ($groupsCount)"),
+                selected = tab,
+                onSelect = { tab = it },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
 
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                    .padding(horizontal = 16.dp),
                 placeholder = { Text(if (isGroup) "Search groups" else "Search friends") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
@@ -101,6 +106,7 @@ fun FriendsScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
                         }
                     }
                 },
+                shape = CircleShape,
                 singleLine = true,
             )
 
@@ -110,8 +116,12 @@ fun FriendsScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = { model.setAllEnabled(isGroup, true) }) { Text("Turn all on") }
-                TextButton(onClick = { model.setAllEnabled(isGroup, false) }) { Text("Turn all off") }
+                TextButton(onClick = { model.setAllEnabled(isGroup, true) }) {
+                    Text("Turn all on", fontWeight = FontWeight.ExtraBold)
+                }
+                TextButton(onClick = { model.setAllEnabled(isGroup, false) }) {
+                    Text("Turn all off", fontWeight = FontWeight.ExtraBold)
+                }
                 Box(Modifier.weight(1f))
                 Box {
                     IconButton(onClick = { menuOpen = true }) {
@@ -150,13 +160,14 @@ fun FriendsScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
                     title = "No friends or groups yet",
                     body = "Add the chats you keep streaks with, or import the list you exported from the original Streak Saver app.",
                 ) {
-                    Button(onClick = { importLauncher.launch(arrayOf("*/*")) }) { Text("Import list") }
-                    OutlinedButton(onClick = { adding = true }) { Text("Add manually") }
+                    PillButton("Import list", onClick = { importLauncher.launch(arrayOf("*/*")) })
+                    PillOutlinedButton("Add manually", onClick = { adding = true })
                 }
             } else {
                 LazyColumn(
                     Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 96.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 104.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (shown.isEmpty()) {
                         item {
@@ -177,7 +188,7 @@ fun FriendsScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(12.dp),
                         )
                     }
                 }
@@ -187,7 +198,10 @@ fun FriendsScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
         ExtendedFloatingActionButton(
             onClick = { adding = true },
             icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-            text = { Text(if (isGroup) "Add group" else "Add friend") },
+            text = { Text(if (isGroup) "Add group" else "Add friend", fontWeight = FontWeight.ExtraBold) },
+            shape = CircleShape,
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
@@ -245,27 +259,40 @@ fun FriendsScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ChatRow(chat: Chat, now: Long, onToggle: (Boolean) -> Unit, onClick: () -> Unit) {
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        leadingContent = { Avatar(chat.title, chat.isGroup) },
-        headlineContent = { Text(chat.title) },
-        supportingContent = {
-            Column {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Avatar(chat.title, chat.isGroup)
+            Column(Modifier.weight(1f)) {
+                Text(chat.title, style = MaterialTheme.typography.titleMedium)
                 val last = chat.lastSentMs?.let { "sent ${relativeTime(it, now)}" } ?: "never sent"
                 val counts = "${chat.successCount} sent, ${chat.failureCount} failed"
                 val handle = if (chat.isGroup || chat.displayName.isBlank()) "" else "@${chat.username.trimStart('@')} · "
-                Text("$handle$last · $counts")
+                Text(
+                    "$handle$last · $counts",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (chat.consecutiveFailures > 0) {
                     Text(
                         "Failed ${chat.consecutiveFailures} times in a row",
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
-        },
-        trailingContent = { Switch(checked = chat.enabled, onCheckedChange = onToggle) },
-    )
+            Switch(checked = chat.enabled, onCheckedChange = onToggle)
+        }
+    }
 }
 
 @Composable
@@ -296,12 +323,14 @@ private fun ChatDialog(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text(if (isGroup) "Group name, exactly as TikTok shows it" else "TikTok username") },
+                    shape = MaterialTheme.shapes.large,
                     singleLine = true,
                 )
                 OutlinedTextField(
                     value = display,
                     onValueChange = { display = it },
                     label = { Text("Display name (optional)") },
+                    shape = MaterialTheme.shapes.large,
                     singleLine = true,
                 )
             }

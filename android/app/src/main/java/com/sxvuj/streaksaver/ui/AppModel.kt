@@ -16,7 +16,9 @@ import com.sxvuj.streaksaver.data.Chat
 import com.sxvuj.streaksaver.data.Dashboard
 import com.sxvuj.streaksaver.data.HistoryStats
 import com.sxvuj.streaksaver.data.ImportResult
+import com.sxvuj.streaksaver.data.RandomMessages
 import com.sxvuj.streaksaver.data.RunEntry
+import com.sxvuj.streaksaver.data.SavedMessages
 import com.sxvuj.streaksaver.data.Session
 import com.sxvuj.streaksaver.data.Settings
 import com.sxvuj.streaksaver.data.StreakRepo
@@ -39,6 +41,7 @@ import org.json.JSONObject
 data class UiData(
     val loaded: Boolean = false,
     val settings: Settings = Settings(),
+    val randomMessages: RandomMessages = RandomMessages(),
     val chats: List<Chat> = emptyList(),
     val dashboard: Dashboard = Dashboard(),
     val history: List<RunEntry> = emptyList(),
@@ -129,6 +132,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         return UiData(
             loaded = true,
             settings = settings,
+            randomMessages = repo.randomMessages(),
             chats = repo.friends(),
             dashboard = repo.dashboard(),
             history = repo.history(),
@@ -145,7 +149,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     fun runNow(ids: List<String> = emptyList()) {
         if (RunStatus.state.value.running) return
         if (!ui.session.valid) {
-            say("Log in to TikTok first (Profile tab).")
+            say("Log in to TikTok first (Settings tab).")
             return
         }
         if (ui.chats.none { it.enabled }) {
@@ -305,6 +309,46 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveMessage(text: String) = change { it.put("message_text", text) }
+
+    /**
+     * Stores the edited random-message pool. [onDone] gets the list the core actually kept (trimmed,
+     * de-duplicated, capped) so the editor can show exactly what is saved.
+     */
+    fun saveRandomMessages(messages: List<String>, onDone: (List<String>) -> Unit = {}) {
+        viewModelScope.launch {
+            val reply = withContext(Dispatchers.IO) { repo.saveRandomMessages(messages) }
+            val saved = reply.obj?.let { SavedMessages.from(it) }
+            if (!reply.ok || saved == null) {
+                say("Could not save the messages: ${reply.error.ifBlank { "unknown error" }}")
+                return@launch
+            }
+            say(
+                when {
+                    saved.messages.isEmpty() -> "Saved. The list is empty, so your single message is used."
+                    saved.dropped > 0 -> "Saved ${saved.messages.size} messages. Left out ${saved.dropped} (empty, too long or repeated)."
+                    else -> "Saved ${saved.messages.size} messages"
+                },
+            )
+            onDone(saved.messages)
+            refresh()
+        }
+    }
+
+    /** Puts the built-in phrases back. [onDone] gets them. */
+    fun resetRandomMessages(onDone: (List<String>) -> Unit = {}) {
+        viewModelScope.launch {
+            val restored = withContext(Dispatchers.IO) {
+                if (repo.resetRandomMessages()) repo.randomMessages() else null
+            }
+            if (restored == null) {
+                say("Could not restore the built-in messages")
+                return@launch
+            }
+            say("Back to the ${restored.messages.size} built-in messages")
+            onDone(restored.messages)
+            refresh()
+        }
+    }
 
     fun setRandomize(on: Boolean) = change { it.put("randomize_normal_messages", on) }
 

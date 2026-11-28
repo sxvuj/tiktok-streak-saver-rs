@@ -2,6 +2,7 @@ package com.sxvuj.streaksaver.data
 
 import android.content.Context
 import com.sxvuj.streaksaver.rust.RustCore
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.TimeZone
 
@@ -47,6 +48,19 @@ class StreakRepo(context: Context) {
         change(current)
         RustCore.saveSettingsJson(dir, current.toString())
     }
+
+    // --- Random message pool ---------------------------------------------------------------------
+
+    fun randomMessages(): RandomMessages =
+        Reply.parse(RustCore.loadRandomMessagesJson(dir)).obj?.let { RandomMessages.from(it) } ?: RandomMessages()
+
+    /** Stores [messages] as the pool. The core trims, de-duplicates and caps it, and says what it kept. */
+    fun saveRandomMessages(messages: List<String>): Reply = synchronized(LOCK) {
+        Reply.parse(RustCore.saveRandomMessagesJson(dir, JSONArray(messages).toString()))
+    }
+
+    /** Goes back to the built-in phrases. */
+    fun resetRandomMessages(): Boolean = synchronized(LOCK) { RustCore.resetRandomMessages(dir) }
 
     fun setNextRun(epochMs: Long): Boolean = synchronized(LOCK) { RustCore.setNextRunEpochMs(dir, epochMs) }
 

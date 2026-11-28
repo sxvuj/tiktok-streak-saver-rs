@@ -107,6 +107,46 @@ data class Settings(
     }
 }
 
+/** Longest single message and largest pool the editor accepts (same limits as the Rust core). */
+const val MAX_MESSAGE_CHARS = 280
+const val MAX_RANDOM_MESSAGES = 200
+
+/** The pool of phrases random mode picks from. [custom] is false while the built-in phrases are in use. */
+data class RandomMessages(
+    val custom: Boolean = false,
+    val messages: List<String> = emptyList(),
+    val builtinCount: Int = 0,
+) {
+    companion object {
+        fun from(o: JSONObject): RandomMessages {
+            val list = o.optJSONArray("messages")
+            val items = ArrayList<String>(list?.length() ?: 0)
+            if (list != null) {
+                for (i in 0 until list.length()) items.add(list.optString(i))
+            }
+            return RandomMessages(
+                custom = o.optBoolean("custom"),
+                messages = items,
+                builtinCount = o.optInt("builtin_count"),
+            )
+        }
+    }
+}
+
+/** What the core stored after a save: the cleaned list and how many entries it left out. */
+data class SavedMessages(val messages: List<String>, val dropped: Int) {
+    companion object {
+        fun from(o: JSONObject): SavedMessages {
+            val list = o.optJSONArray("messages")
+            val items = ArrayList<String>(list?.length() ?: 0)
+            if (list != null) {
+                for (i in 0 until list.length()) items.add(list.optString(i))
+            }
+            return SavedMessages(items, o.optInt("dropped"))
+        }
+    }
+}
+
 data class Session(
     val valid: Boolean = false,
     val lastCheckMs: Long? = null,

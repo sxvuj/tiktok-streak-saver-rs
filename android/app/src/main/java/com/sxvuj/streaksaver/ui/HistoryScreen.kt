@@ -13,14 +13,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sxvuj.streaksaver.data.RunEntry
+import com.sxvuj.streaksaver.ui.theme.Fit
 
 @Composable
 fun HistoryScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
@@ -48,23 +48,34 @@ fun HistoryScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
 
     LazyColumn(
         modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        item { ScreenHeader("History", subtitle = "${ui.stats.totalRuns} runs so far") }
+
         item {
             SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     val rate = ui.stats.successRatePct
-                    ProgressRing(progress = (rate / 100.0).toFloat()) {
+                    val any = ui.stats.sent + ui.stats.failed > 0
+                    GaugeRing(
+                        progress = (rate / 100.0).toFloat(),
+                        diameter = 124.dp,
+                        thickness = 14.dp,
+                        color = Fit.colors.teal,
+                    ) {
                         Text(
-                            if (ui.stats.sent + ui.stats.failed == 0) "-" else "${rate.toInt()}%",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
+                            if (any) "${rate.toInt()}%" else "-",
+                            style = MaterialTheme.typography.headlineMedium,
                         )
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("All time", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${ui.stats.totalRuns} runs", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "All time",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text("${ui.stats.totalRuns} runs", style = MaterialTheme.typography.titleLarge)
                         Text(
                             "${ui.stats.sent} messages sent, ${ui.stats.failed} failed",
                             style = MaterialTheme.typography.bodySmall,
@@ -73,14 +84,16 @@ fun HistoryScreen(model: AppModel, now: Long, modifier: Modifier = Modifier) {
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
+                    PillTonalButton(
+                        "Export log",
                         onClick = { exportLauncher.launch("streak-saver-history.txt") },
                         enabled = ui.history.isNotEmpty(),
-                    ) { Text("Export log") }
-                    OutlinedButton(
+                    )
+                    PillOutlinedButton(
+                        "Clear",
                         onClick = { confirmClear = true },
                         enabled = ui.history.isNotEmpty(),
-                    ) { Text("Clear") }
+                    )
                 }
             }
         }
@@ -123,35 +136,38 @@ private fun RunCard(entry: RunEntry, now: Long, canRetry: Boolean, onRetry: (Lis
     var expanded by remember(entry.runMs) { mutableStateOf(false) }
     val expandable = entry.failed > 0 || entry.skipped || entry.sent > 0
     val problem = entry.failed > 0 || entry.skipped
+    val colors = MaterialTheme.colorScheme
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = expandable) { expanded = !expanded },
+        shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
-            containerColor = if (problem) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLow,
+            containerColor = if (problem) colors.surfaceContainerHigh else colors.surfaceContainerLow,
         ),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(formatDateTime(entry.runMs), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(formatDateTime(entry.runMs), style = MaterialTheme.typography.titleMedium)
                     Text(
                         relativeTime(entry.runMs, now),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.onSurfaceVariant,
                     )
                 }
-                Text(
-                    when {
-                        entry.skipped -> "Skipped"
-                        entry.failed == 0 -> "All sent"
-                        entry.sent == 0 -> "Failed"
-                        else -> "Partly sent"
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                )
+                val label = when {
+                    entry.skipped -> "Skipped"
+                    entry.failed == 0 -> "All sent"
+                    entry.sent == 0 -> "Failed"
+                    else -> "Partly sent"
+                }
+                if (problem) {
+                    StatusPill(label, container = colors.errorContainer, content = colors.onErrorContainer)
+                } else {
+                    StatusPill(label, container = Fit.colors.tealContainer, content = Fit.colors.onTealContainer)
+                }
             }
 
             if (entry.skipped) {
@@ -171,11 +187,11 @@ private fun RunCard(entry: RunEntry, now: Long, canRetry: Boolean, onRetry: (Lis
             if (expanded) {
                 entry.failures.forEach { failure ->
                     Column {
-                        Text(failure.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        Text(failure.title, style = MaterialTheme.typography.titleSmall)
                         Text(
                             failure.error ?: "Unknown error",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = colors.error,
                         )
                     }
                 }
@@ -184,16 +200,17 @@ private fun RunCard(entry: RunEntry, now: Long, canRetry: Boolean, onRetry: (Lis
                     Text(
                         "Sent to: $sentNames",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.onSurfaceVariant,
                         maxLines = 6,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
                 if (entry.failed > 0) {
-                    Button(
+                    PillButton(
+                        "Retry failed",
                         onClick = { onRetry(entry.failures.map { it.friendId }) },
                         enabled = canRetry,
-                    ) { Text("Retry failed") }
+                    )
                 }
             }
         }

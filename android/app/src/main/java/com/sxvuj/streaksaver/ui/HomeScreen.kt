@@ -3,26 +3,23 @@
 package com.sxvuj.streaksaver.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -35,10 +32,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.sxvuj.streaksaver.rust.RustCore
-import kotlinx.coroutines.delay
+import com.sxvuj.streaksaver.ui.theme.Fit
 
 @Composable
 fun HomeScreen(
@@ -46,11 +43,13 @@ fun HomeScreen(
     now: Long,
     onLogin: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    onEditMessages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ui = model.ui
     val run by model.run.collectAsState()
     val dash = ui.dashboard
+    val colors = MaterialTheme.colorScheme
 
     var pulling by remember { mutableStateOf(false) }
     LaunchedEffect(ui.updateChecking) { if (!ui.updateChecking) pulling = false }
@@ -68,116 +67,127 @@ fun HomeScreen(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            ScreenHeader("Today", subtitle = formatDayLong(now))
+
             val update = ui.update
             if (update != null && update.available) {
-                SectionCard(containerColor = MaterialTheme.colorScheme.primaryContainer) {
-                    Text(
-                        "Version ${update.latestVersion} is available",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                    Text(
-                        "You have ${update.currentVersion}.",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                    Button(onClick = { onOpenUrl(update.pageUrl) }) { Text("View release") }
+                SectionCard(
+                    containerColor = colors.primaryContainer,
+                    contentColor = colors.onPrimaryContainer,
+                ) {
+                    Text("Version ${update.latestVersion} is available", style = MaterialTheme.typography.titleLarge)
+                    Text("You have ${update.currentVersion}.", style = MaterialTheme.typography.bodyMedium)
+                    PillButton("View release", onClick = { onOpenUrl(update.pageUrl) })
                 }
             }
 
             if (ui.loaded && !ui.session.valid) {
-                SectionCard(containerColor = MaterialTheme.colorScheme.errorContainer) {
-                    Text(
-                        "Not logged in to TikTok",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
+                SectionCard(
+                    containerColor = colors.errorContainer,
+                    contentColor = colors.onErrorContainer,
+                ) {
+                    Text("Not logged in to TikTok", style = MaterialTheme.typography.titleLarge)
                     Text(
                         "Streaks cannot be sent until you log in. Your login stays on this phone.",
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    Button(
+                    PillButton(
+                        "Log in",
                         onClick = onLogin,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
+                            containerColor = colors.error,
+                            contentColor = colors.onError,
                         ),
-                    ) { Text("Log in") }
+                    )
                 }
             }
 
-            SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // The hero card: the thick gauge with today's progress and the run button under it.
+            SectionCard(containerColor = colors.surfaceContainerLow) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val progress = if (dash.enabledTargets > 0) dash.sentToday.toFloat() / dash.enabledTargets else 0f
-                    ProgressRing(progress = progress) {
-                        Text(
-                            "${dash.sentToday}/${dash.enabledTargets}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Today", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            when {
-                                dash.enabledTargets == 0 -> "No chats turned on"
-                                dash.remainingToday == 0 -> "Everyone is covered"
-                                else -> "${dash.remainingToday} still to message"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            "${dash.enabledTargets} of ${dash.totalTargets} chats are on",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    GaugeRing(progress = progress, diameter = 220.dp, thickness = 22.dp) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${dash.sentToday}", style = MaterialTheme.typography.displayLarge)
+                            Text(
+                                "of ${dash.enabledTargets} chats",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
+                Text(
+                    when {
+                        dash.enabledTargets == 0 -> "No chats turned on"
+                        dash.remainingToday == 0 -> "Everyone is covered today"
+                        else -> "${dash.remainingToday} still to message"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center,
+                )
 
                 if (run.running) {
                     val label = if (run.total > 0) "Sending ${run.index} of ${run.total}: ${run.current}" else run.current
                     Text(label, style = MaterialTheme.typography.bodyMedium)
+                    val bar = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(CircleShape)
                     if (run.total > 0) {
                         LinearProgressIndicator(
                             progress = { (run.index - 1).coerceAtLeast(0).toFloat() / run.total },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = bar,
+                            color = Fit.colors.gauge,
+                            trackColor = Fit.colors.gaugeTrack,
                         )
                     } else {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        LinearProgressIndicator(
+                            modifier = bar,
+                            color = Fit.colors.gauge,
+                            trackColor = Fit.colors.gaugeTrack,
+                        )
                     }
-                    OutlinedButton(onClick = { model.stopRun() }, enabled = !run.stopping) {
-                        Icon(Icons.Filled.Close, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (run.stopping) "Stopping" else "Stop")
-                    }
+                    PillTonalButton(
+                        if (run.stopping) "Stopping" else "Stop",
+                        onClick = { model.stopRun() },
+                        modifier = Modifier.fillMaxWidth(),
+                        icon = Icons.Filled.Close,
+                        enabled = !run.stopping,
+                    )
                 } else {
-                    Button(onClick = { model.runNow() }) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Run now")
-                    }
+                    PillButton(
+                        "Run now",
+                        onClick = { model.runNow() },
+                        modifier = Modifier.fillMaxWidth(),
+                        icon = Icons.Filled.PlayArrow,
+                    )
                 }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatTile(dash.friendsTotal.toString(), "Friends", Modifier.weight(1f))
-                StatTile(dash.groupsTotal.toString(), "Groups", Modifier.weight(1f))
                 StatTile(
-                    dash.successRateTodayPct?.let { "${it.toInt()}%" } ?: "-",
-                    "Success today",
-                    Modifier.weight(1f),
+                    dash.friendsTotal.toString(), "Friends", Modifier.weight(1f),
+                    container = colors.primaryContainer, content = colors.onPrimaryContainer,
+                )
+                StatTile(
+                    dash.groupsTotal.toString(), "Groups", Modifier.weight(1f),
+                    container = Fit.colors.tealContainer, content = Fit.colors.onTealContainer,
+                )
+                StatTile(
+                    dash.successRateTodayPct?.let { "${it.toInt()}%" } ?: "-", "Success today", Modifier.weight(1f),
+                    container = Fit.colors.amberContainer, content = Fit.colors.onAmberContainer,
                 )
             }
 
             SectionCard(title = "Schedule") {
                 val settings = ui.settings
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Next run", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Next run", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
                     val next = settings.nextRunMs
                     Text(
                         when {
@@ -185,77 +195,81 @@ fun HomeScreen(
                             next == null || next <= 0L -> if (ui.session.valid) "Not scheduled yet" else "Waiting for login"
                             else -> "${formatDateTime(next)} (${relativeTime(next, now)})"
                         },
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Last run", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Last run", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
                     Text(
                         dash.lastRunMs?.let { "${formatDateTime(it)} (${relativeTime(it, now)})" } ?: "No runs yet",
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 if (settings.lastRunFailed) {
                     Text(
                         "The last attempt failed" + (settings.failureReason?.let { ": $it" } ?: "") + ". It is retried hourly.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = colors.error,
                     )
                 }
                 if (settings.scheduled && !ui.exactAlarmsAllowed) {
                     Text(
-                        "Exact alarms are off, so runs can be late. Allow them in the Profile tab.",
+                        "Exact alarms are off, so runs can be late. Allow them in the Settings tab.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = colors.error,
                     )
                 }
             }
 
-            SectionCard(title = "Message") {
-                SwitchRow(
-                    title = "Random messages",
-                    subtitle = "Send a different built-in phrase to each chat instead of your own text.",
-                    checked = ui.settings.randomize,
-                    onCheckedChange = { model.setRandomize(it) },
+            MessageCard(ui, onEditMessages)
+        }
+    }
+}
+
+/** Shows what will be sent and opens the editor. */
+@Composable
+private fun MessageCard(ui: UiData, onEdit: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val settings = ui.settings
+    val pool = ui.randomMessages.messages
+
+    SectionCard(title = "Message") {
+        if (settings.randomize) {
+            StatusPill(
+                if (pool.isEmpty()) "Random, list empty" else "Random, ${pool.size} messages",
+                container = Fit.colors.tealContainer,
+                content = Fit.colors.onTealContainer,
+            )
+            if (pool.isEmpty()) {
+                Text(
+                    "Your random list is empty, so your single message is sent instead:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
                 )
-                if (ui.settings.randomize) {
-                    // Your own text is not used in this mode, so there is no field to type in.
-                    var sample by remember { mutableStateOf(RustCore.pickRandomMessage()) }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            "Example",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text("\"$sample\"", style = MaterialTheme.typography.bodyLarge)
-                    }
-                    TextButton(onClick = { sample = RustCore.pickRandomMessage() }) { Text("Show another") }
-                } else {
-                    var text by remember { mutableStateOf(ui.settings.messageText) }
-                    LaunchedEffect(text) {
-                        // A blank message is never saved: the last saved text keeps being used.
-                        if (text.isNotBlank() && text != ui.settings.messageText) {
-                            delay(600)
-                            model.saveMessage(text)
-                        }
-                    }
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Message to send") },
-                        isError = text.isBlank(),
-                        supportingText = {
-                            Text(
-                                if (text.isBlank()) "Type a message. Until then the last saved one is sent."
-                                else "Saved automatically.",
-                            )
-                        },
-                        minLines = 2,
-                        maxLines = 5,
-                    )
+                Text("\"${settings.messageText}\"", style = MaterialTheme.typography.titleMedium)
+            } else {
+                var sample by remember(pool) { mutableStateOf(pool.randomOrNull().orEmpty()) }
+                Text(
+                    "Example of what a chat can get:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+                Text("\"$sample\"", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = { sample = pool.randomOrNull().orEmpty() }) {
+                    Text("Show another", style = MaterialTheme.typography.labelLarge)
                 }
             }
+        } else {
+            StatusPill(
+                "Single message",
+                container = colors.primaryContainer,
+                content = colors.onPrimaryContainer,
+            )
+            Text(
+                if (settings.messageText.isBlank()) "No message set" else "\"${settings.messageText}\"",
+                style = MaterialTheme.typography.titleMedium,
+            )
         }
+        PillTonalButton("Edit messages", onClick = onEdit, modifier = Modifier.fillMaxWidth())
     }
 }

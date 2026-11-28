@@ -5,32 +5,27 @@ package com.sxvuj.streaksaver.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,21 +42,26 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sxvuj.streaksaver.data.Session
+import com.sxvuj.streaksaver.ui.theme.Fit
 
 private const val REPO_URL = "https://github.com/sxvuj/tiktok-streak-saver-rs"
 private const val ORIGINAL_URL = "https://github.com/Jon2G/TiktokStreakSaver"
 
+private val CHAT_ORDER_VALUES = listOf("mixed", "friends_first", "groups_first")
+
 @Composable
-fun ProfileScreen(
+fun SettingsScreen(
     model: AppModel,
     now: Long,
     onLogin: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    onEditMessages: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ui = model.ui
     val settings = ui.settings
     val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
 
     var editingName by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
@@ -71,9 +71,11 @@ fun ProfileScreen(
         modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        ScreenHeader("Settings")
+
         SessionCard(
             session = ui.session,
             now = now,
@@ -92,7 +94,7 @@ fun ProfileScreen(
                 onCheckedChange = { model.setScheduled(it) },
             )
             if (settings.scheduled) {
-                HorizontalDivider()
+                HorizontalDivider(color = colors.outlineVariant)
                 SwitchRow(
                     title = "Send at a fixed time",
                     subtitle = "Uses your phone's local time.",
@@ -107,48 +109,54 @@ fun ProfileScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("Time of day", style = MaterialTheme.typography.bodyLarge)
+                            Text("Time of day", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                             Text(
                                 formatClock(settings.fixedHour, settings.fixedMinute),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = colors.primary,
                             )
                         }
-                        FilledTonalButton(onClick = { pickingTime = true }) { Text("Change") }
+                        PillTonalButton("Change", onClick = { pickingTime = true })
                     }
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Column(Modifier.weight(1f)) {
-                            Text("Repeat every", style = MaterialTheme.typography.bodyLarge)
+                            Text("Repeat every", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                             Text(
                                 "Between 1 and 23 hours. Keep it under 24 so a streak never lapses.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = colors.onSurfaceVariant,
                             )
                         }
-                        OutlinedButton(
-                            onClick = { model.setInterval(settings.intervalHours - 1) },
-                            enabled = settings.intervalHours > 1,
-                        ) { Text("-") }
+                        StepButton("-", enabled = settings.intervalHours > 1) { model.setInterval(settings.intervalHours - 1) }
                         Text(
                             "${settings.intervalHours} h",
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                            style = MaterialTheme.typography.titleLarge,
                         )
-                        OutlinedButton(
-                            onClick = { model.setInterval(settings.intervalHours + 1) },
-                            enabled = settings.intervalHours < 23,
-                        ) { Icon(Icons.Filled.Add, contentDescription = "More hours") }
+                        StepButton("+", enabled = settings.intervalHours < 23) { model.setInterval(settings.intervalHours + 1) }
                     }
                 }
             }
         }
 
         SectionCard(title = "Messages") {
+            val pool = ui.randomMessages
+            ActionRow(
+                title = "Edit messages",
+                subtitle = when {
+                    !settings.randomize -> "Single message: \"${settings.messageText.take(60)}\""
+                    pool.messages.isEmpty() -> "Random, but the list is empty so your single message is used"
+                    pool.custom -> "Random, ${pool.messages.size} of your own messages"
+                    else -> "Random, ${pool.messages.size} built-in messages"
+                },
+                action = "Edit",
+                onClick = onEditMessages,
+            )
+            HorizontalDivider(color = colors.outlineVariant)
             SwitchRow(
                 title = "Random messages",
-                subtitle = "Pick a different built-in message for each chat instead of your own text.",
+                subtitle = "Pick a different message from your list for each chat instead of one fixed text.",
                 checked = settings.randomize,
                 onCheckedChange = { model.setRandomize(it) },
             )
@@ -158,12 +166,12 @@ fun ProfileScreen(
                 checked = settings.skipUnreachable,
                 onCheckedChange = { model.setSkipUnreachable(it) },
             )
-            Text("Chat order", style = MaterialTheme.typography.bodyLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PriorityChip("Mixed", "mixed", settings.chatPriority) { model.setPriority(it) }
-                PriorityChip("Friends first", "friends_first", settings.chatPriority) { model.setPriority(it) }
-                PriorityChip("Groups first", "groups_first", settings.chatPriority) { model.setPriority(it) }
-            }
+            Text("Chat order", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            SegmentedPills(
+                options = listOf("Mixed", "Friends first", "Groups first"),
+                selected = CHAT_ORDER_VALUES.indexOf(settings.chatPriority).coerceAtLeast(0),
+                onSelect = { model.setPriority(CHAT_ORDER_VALUES[it]) },
+            )
         }
 
         SectionCard(title = "Reliability") {
@@ -173,7 +181,7 @@ fun ProfileScreen(
                 checked = settings.sendOnBatteryLow,
                 onCheckedChange = { model.setBatteryLow(it) },
             )
-            HorizontalDivider()
+            HorizontalDivider(color = colors.outlineVariant)
             ActionRow(
                 title = "Battery optimization",
                 subtitle = if (ui.ignoringBatteryOptimizations) "Unrestricted. Good." else "Android may delay runs. Set this app to Unrestricted.",
@@ -182,11 +190,11 @@ fun ProfileScreen(
             ) { openSettings(context, Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
             ActionRow(
                 title = "Exact alarms",
-                subtitle = if (ui.exactAlarmsAllowed) "Allowed. Runs start on time." else "Not allowed. Runs can be late.",
+                subtitle = if (ui.exactAlarmsAllowed) "Allowed. Runs start on time." else "Not allowed. Runs can be a few minutes late.",
                 good = ui.exactAlarmsAllowed,
                 action = "Open",
             ) {
-                val intent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     Intent(AndroidSettings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))
                 } else {
                     appDetails(context)
@@ -199,7 +207,7 @@ fun ProfileScreen(
                 good = ui.notificationsAllowed,
                 action = "Open",
             ) {
-                val intent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
                         .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
                 } else {
@@ -210,38 +218,49 @@ fun ProfileScreen(
         }
 
         SectionCard(title = "About") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text("Streak Saver RS", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                    Text("Streak Saver RS", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "Version ${model.versionName}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.onSurfaceVariant,
                     )
                     val update = ui.update
                     if (update != null) {
                         Text(
                             if (update.available) "Version ${update.latestVersion} is available" else "You have the latest version",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (update.available) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (update.available) colors.primary else colors.onSurfaceVariant,
                         )
                     }
                 }
-                FilledTonalButton(onClick = { model.checkUpdate() }, enabled = !ui.updateChecking) {
-                    Text(if (ui.updateChecking) "Checking" else "Check for updates")
-                }
+                PillTonalButton(
+                    if (ui.updateChecking) "Checking" else "Check",
+                    onClick = { model.checkUpdate() },
+                    enabled = !ui.updateChecking,
+                )
             }
             if (ui.update?.available == true) {
-                Button(onClick = { onOpenUrl(ui.update?.pageUrl ?: REPO_URL) }) { Text("View release") }
+                PillButton("View release", onClick = { onOpenUrl(ui.update?.pageUrl ?: REPO_URL) })
             }
             Text(
                 "Everything stays on this phone. The app only talks to TikTok (to send messages) and to GitHub (to look for updates).",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.onSurfaceVariant,
+            )
+            Text(
+                "Typeface: Google Sans Flex, used under the SIL Open Font License 1.1.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { onOpenUrl(REPO_URL) }) { Text("Source code") }
-                TextButton(onClick = { onOpenUrl(ORIGINAL_URL) }) { Text("Original app") }
+                TextButton(onClick = { onOpenUrl(REPO_URL) }) {
+                    Text("Source code", style = MaterialTheme.typography.labelLarge)
+                }
+                TextButton(onClick = { onOpenUrl(ORIGINAL_URL) }) {
+                    Text("Original app", style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }
@@ -256,6 +275,7 @@ fun ProfileScreen(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Shown on this screen only") },
+                    shape = MaterialTheme.shapes.large,
                     singleLine = true,
                 )
             },
@@ -305,11 +325,18 @@ fun ProfileScreen(
                         confirmLogout = false
                         model.logout()
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
                 ) { Text("Log out") }
             },
             dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun StepButton(label: String, enabled: Boolean, onClick: () -> Unit) {
+    FilledTonalIconButton(onClick = onClick, enabled = enabled) {
+        Text(label, style = MaterialTheme.typography.titleLarge)
     }
 }
 
@@ -322,16 +349,17 @@ private fun SessionCard(
     onLogin: () -> Unit,
     onLogout: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     SectionCard(
-        containerColor = if (session.valid) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        containerColor = if (session.valid) Fit.colors.tealContainer else colors.surfaceContainerHigh,
+        contentColor = if (session.valid) Fit.colors.onTealContainer else colors.onSurface,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Avatar(session.displayName.ifBlank { "T" }, isGroup = false)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Avatar(session.displayName.ifBlank { "T" }, isGroup = session.valid)
             Column(Modifier.weight(1f)) {
                 Text(
                     session.displayName.ifBlank { "TikTok account" },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleLarge,
                 )
                 Text(
                     if (session.valid) {
@@ -340,45 +368,20 @@ private fun SessionCard(
                         "Not logged in"
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (session.valid) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.error,
+                    color = if (session.valid) Fit.colors.onTealContainer else colors.error,
                 )
             }
             IconButton(onClick = onEditName) { Icon(Icons.Filled.Edit, contentDescription = "Edit name") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (session.valid) {
-                OutlinedButton(onClick = onVerify) { Text("Verify") }
-                OutlinedButton(onClick = onLogout) { Text("Log out") }
+                PillOutlinedButton("Verify", onClick = onVerify)
+                PillOutlinedButton("Log out", onClick = onLogout)
             } else {
-                Button(onClick = onLogin) { Text("Log in to TikTok") }
-                OutlinedButton(onClick = onVerify) { Text("Check again") }
+                PillButton("Log in to TikTok", onClick = onLogin)
+                PillOutlinedButton("Check again", onClick = onVerify)
             }
         }
-    }
-}
-
-@Composable
-private fun PriorityChip(label: String, value: String, current: String, onSelect: (String) -> Unit) {
-    FilterChip(
-        selected = current == value,
-        onClick = { onSelect(value) },
-        label = { Text(label) },
-    )
-}
-
-@Composable
-private fun ActionRow(title: String, subtitle: String, good: Boolean, action: String, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (good) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        TextButton(onClick = onClick) { Text(action) }
     }
 }
 
